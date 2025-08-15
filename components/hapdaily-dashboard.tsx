@@ -27,89 +27,60 @@ export function HapDailyDashboard() {
   const [picks, setPicks] = useState<Pick[]>([])
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [stats, setStats] = useState({
+    totalPicks: 0,
+    totalFixtures: 0,
+    qualifyingFixtures: 0,
+    averageProbability: 0
+  })
 
-  // Mock data for demonstration
-  const mockPicks: Pick[] = [
-    {
-      id: "1",
-      homeTeam: "Manchester City",
-      awayTeam: "Sheffield United",
-      league: "Premier League",
-      kickoffTime: "2024-01-15T15:00:00Z",
-      homeProbability: 0.87,
-      homeOdds: 1.15,
-      awayOdds: 15.0,
-      drawOdds: 8.5,
-      standingsGap: 15,
-      homeForm: "WWWWW",
-      awayForm: "LLLLD",
-      confidence: "Extreme",
-    },
-    {
-      id: "2",
-      homeTeam: "Arsenal",
-      awayTeam: "Luton Town",
-      league: "Premier League",
-      kickoffTime: "2024-01-15T17:30:00Z",
-      homeProbability: 0.84,
-      homeOdds: 1.2,
-      awayOdds: 12.0,
-      drawOdds: 7.0,
-      standingsGap: 12,
-      homeForm: "WWWDW",
-      awayForm: "LLDLL",
-      confidence: "Very High",
-    },
-    {
-      id: "3",
-      homeTeam: "Liverpool",
-      awayTeam: "Bournemouth",
-      league: "Premier League",
-      kickoffTime: "2024-01-15T20:00:00Z",
-      homeProbability: 0.82,
-      homeOdds: 1.22,
-      awayOdds: 11.0,
-      drawOdds: 6.5,
-      standingsGap: 10,
-      homeForm: "WWLWW",
-      awayForm: "LDLWL",
-      confidence: "Very High",
-    },
-    {
-      id: "4",
-      homeTeam: "Newcastle United",
-      awayTeam: "Burnley",
-      league: "Premier League",
-      kickoffTime: "2024-01-15T14:00:00Z",
-      homeProbability: 0.81,
-      homeOdds: 1.24,
-      awayOdds: 10.5,
-      drawOdds: 6.0,
-      standingsGap: 8,
-      homeForm: "WDWWL",
-      awayForm: "LLLWL",
-      confidence: "High",
-    },
-  ]
+  const fetchPicks = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/picks')
+      const data = await response.json()
+
+      if (data.success) {
+        setPicks(data.picks || [])
+        setStats(data.stats || stats)
+        setLastUpdated(new Date(data.lastUpdated))
+      } else {
+        console.error('Failed to fetch picks:', data.error)
+        setPicks([])
+      }
+    } catch (error) {
+      console.error('Error fetching picks:', error)
+      setPicks([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    // Simulate loading picks
-    setLoading(true)
-    setTimeout(() => {
-      setPicks(mockPicks)
-      setLastUpdated(new Date())
-      setLoading(false)
-    }, 1500)
+    fetchPicks()
   }, [])
 
   const refreshPicks = async () => {
-    setLoading(true)
-    // In production, this would call /api/refresh
-    setTimeout(() => {
-      setPicks(mockPicks)
-      setLastUpdated(new Date())
+    try {
+      setLoading(true)
+
+      // Trigger a refresh of the data
+      const refreshResponse = await fetch('/api/picks', { method: 'POST' })
+      const refreshData = await refreshResponse.json()
+
+      if (refreshData.success) {
+        // Wait a moment for the refresh to complete, then fetch new data
+        setTimeout(() => {
+          fetchPicks()
+        }, 2000)
+      } else {
+        console.error('Failed to refresh picks:', refreshData.error)
+        setLoading(false)
+      }
+    } catch (error) {
+      console.error('Error refreshing picks:', error)
       setLoading(false)
-    }, 2000)
+    }
   }
 
   const getConfidenceColor = (confidence: string) => {
@@ -189,7 +160,7 @@ export function HapDailyDashboard() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Today's Picks</p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">{picks.length}</p>
+                  <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.totalPicks}</p>
                 </div>
               </div>
             </CardContent>
@@ -204,9 +175,7 @@ export function HapDailyDashboard() {
                 <div>
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Avg Probability</p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {picks.length > 0
-                      ? `${Math.round((picks.reduce((acc, pick) => acc + pick.homeProbability, 0) / picks.length) * 100)}%`
-                      : "0%"}
+                    {Math.round(stats.averageProbability * 100)}%
                   </p>
                 </div>
               </div>
@@ -220,9 +189,9 @@ export function HapDailyDashboard() {
                   <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Leagues</p>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total Fixtures</p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {new Set(picks.map((pick) => pick.league)).size}
+                    {stats.totalFixtures}
                   </p>
                 </div>
               </div>
@@ -236,9 +205,9 @@ export function HapDailyDashboard() {
                   <BarChart3 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">High Confidence</p>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Qualifying</p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {picks.filter((pick) => pick.confidence === "Extreme" || pick.confidence === "Very High").length}
+                    {stats.qualifyingFixtures}
                   </p>
                 </div>
               </div>
