@@ -1,10 +1,11 @@
-import { Pool } from "pg"
+import { Pool, QueryResultRow } from "pg"
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DB_EXTERNAL_URL || process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 })
 
-export async function query<T = any>(sql: string, params: any[] = []) {
+export async function query<T extends QueryResultRow = any>(sql: string, params: any[] = []) {
   const client = await pool.connect()
   try {
     const result = await client.query<T>(sql, params)
