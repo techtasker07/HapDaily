@@ -1,6 +1,0 @@
-DB_HOST=dpg-d2fjp9umcj7s73eumlvg-a
-DB_PORT=5432
-DB_NAME=hapmasentpicks
-DB_USER=hapmasentpicks_user
-DB_PASSWORD=Swzm2xJtPql8gDR42f3aqkmvBcDuqIh3
-DB_EXTERNAL_URL=postgresql://hapmasentpicks_user:Swzm2xJtPql8gDR42f3aqkmvBcDuqIh3@dpg-d2fjp9umcj7s73eumlvg-a.frankfurt-postgres.render.com/hapmasentpicks
