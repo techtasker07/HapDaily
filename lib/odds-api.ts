@@ -56,9 +56,14 @@ const SOCCER_SPORTS = [
 
 export async function getOddsForSport(sportKey: string): Promise<OddsApiEvent[]> {
   try {
+    if (!API_KEY) {
+      console.error(`No API key available for odds API`)
+      return []
+    }
+
     const url = `${ODDS_API_BASE_URL}/sports/${sportKey}/odds`
     const params = new URLSearchParams({
-      apiKey: API_KEY || '',
+      apiKey: API_KEY,
       regions: 'eu,uk', // European and UK bookmakers
       markets: 'h2h', // Head-to-head (1X2) market
       oddsFormat: 'decimal',
@@ -66,8 +71,10 @@ export async function getOddsForSport(sportKey: string): Promise<OddsApiEvent[]>
     })
 
     const fullUrl = `${url}?${params}`
-    console.log(`Fetching odds for ${sportKey} from: ${fullUrl.replace(API_KEY || '', 'API_KEY_HIDDEN')}`)
-    console.log(`Using API key: ${API_KEY ? API_KEY.substring(0, 8) + '...' : 'NOT SET'}`)
+    console.log(`Fetching odds for ${sportKey}`)
+    console.log(`API key length: ${API_KEY.length}`)
+    console.log(`API key preview: ${API_KEY.substring(0, 8)}...`)
+    console.log(`Full URL (key hidden): ${fullUrl.replace(API_KEY, 'API_KEY_HIDDEN')}`)
 
     const response = await fetch(fullUrl)
 
@@ -75,7 +82,13 @@ export async function getOddsForSport(sportKey: string): Promise<OddsApiEvent[]>
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error(`Odds API error for ${sportKey}:`, errorText)
+      console.error(`Odds API error for ${sportKey} (${response.status}):`, errorText)
+
+      // If 401, it's likely an API key issue
+      if (response.status === 401) {
+        console.error(`Authentication failed for ${sportKey}. Check API key: ${API_KEY}`)
+      }
+
       throw new Error(`Odds API error: ${response.status} ${response.statusText}`)
     }
 
