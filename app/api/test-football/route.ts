@@ -49,14 +49,23 @@ export async function GET() {
       competitions = competitionsData.competitions.slice(0, 10) // First 10 for brevity
     }
     
+    // Test the filtering logic
+    const { getTodaysFixtures } = await import("@/lib/football-data")
+    let filteredFixtures = []
+    try {
+      filteredFixtures = await getTodaysFixtures()
+    } catch (error) {
+      console.error("Error in getTodaysFixtures:", error)
+    }
+
     return NextResponse.json({
       success: true,
       api_token_set: !!API_TOKEN,
       api_token_preview: API_TOKEN ? API_TOKEN.substring(0, 8) + '...' : 'NOT SET',
       today: today,
-      matches: {
+      raw_matches: {
         total_count: matchesData.matches.length,
-        sample_matches: matchesData.matches.slice(0, 3).map((match: any) => ({
+        sample_matches: matchesData.matches.slice(0, 5).map((match: any) => ({
           id: match.id,
           home_team: match.homeTeam.name,
           away_team: match.awayTeam.name,
@@ -65,7 +74,19 @@ export async function GET() {
           status: match.status,
           utc_date: match.utcDate
         })),
-        all_competitions: [...new Set(matchesData.matches.map((match: any) => match.competition.code))]
+        all_competitions: [...new Set(matchesData.matches.map((match: any) => match.competition.code))],
+        all_statuses: [...new Set(matchesData.matches.map((match: any) => match.status))]
+      },
+      filtered_fixtures: {
+        count: filteredFixtures.length,
+        fixtures: filteredFixtures.slice(0, 5).map((fixture: any) => ({
+          id: fixture.id,
+          home_team: fixture.homeTeam.name,
+          away_team: fixture.awayTeam.name,
+          competition: fixture.competition.name,
+          competition_code: fixture.competition.code,
+          status: fixture.status
+        }))
       },
       available_competitions: competitions.map((comp: any) => ({
         id: comp.id,

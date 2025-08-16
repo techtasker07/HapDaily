@@ -69,14 +69,17 @@ const headers = {
 }
 
 // Major European leagues that are likely to have good odds coverage
+// Based on your Postman result: "ELC,PL,PPL,FL1,DED,PD,BSA"
 const SUPPORTED_COMPETITIONS = [
   'PL',  // Premier League
+  'ELC', // Championship (English League Championship)
   'PD',  // La Liga
   'BL1', // Bundesliga
   'SA',  // Serie A
   'FL1', // Ligue 1
   'DED', // Eredivisie
   'PPL', // Primeira Liga
+  'BSA', // Brazilian Serie A
   'CL',  // Champions League
   'EL'   // Europa League
 ]
@@ -108,14 +111,28 @@ export async function getTodaysFixtures(): Promise<FootballDataFixture[]> {
       console.log(`Match: ${match.homeTeam.name} vs ${match.awayTeam.name} (${match.competition.name}) - Status: ${match.status}`)
     })
 
+    // Log all competition codes found
+    const foundCompetitions = [...new Set(data.matches.map(match => match.competition.code))]
+    console.log(`Competition codes found today: ${foundCompetitions.join(', ')}`)
+    console.log(`Supported competitions: ${SUPPORTED_COMPETITIONS.join(', ')}`)
+
+    // Log all match statuses
+    const foundStatuses = [...new Set(data.matches.map(match => match.status))]
+    console.log(`Match statuses found: ${foundStatuses.join(', ')}`)
+
     // Filter for supported competitions and scheduled matches
     const filteredMatches = data.matches.filter(match =>
       SUPPORTED_COMPETITIONS.includes(match.competition.code) &&
-      match.status === 'SCHEDULED'
+      (match.status === 'SCHEDULED' || match.status === 'TIMED')
     )
 
     console.log(`Found ${filteredMatches.length} matches in supported leagues for today`)
-    console.log(`Supported competitions: ${SUPPORTED_COMPETITIONS.join(', ')}`)
+
+    // If no matches in supported leagues, return all matches for debugging
+    if (filteredMatches.length === 0) {
+      console.log(`No matches in supported leagues, returning all ${data.matches.length} matches for debugging`)
+      return data.matches
+    }
 
     return filteredMatches
 
