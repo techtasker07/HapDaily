@@ -35,7 +35,14 @@ interface NormalizedOdds {
 }
 
 const ODDS_API_BASE_URL = 'https://api.the-odds-api.com/v4'
+
+// Get the API key from environment variables
 const API_KEY = process.env.ODDS_API_KEY
+
+console.log('Odds API initialized:', {
+  hasApiKey: !!API_KEY,
+  keyPreview: API_KEY ? API_KEY.substring(0, 8) + '...' : 'NOT SET'
+})
 
 if (!API_KEY) {
   console.warn('ODDS_API_KEY not found in environment variables')
@@ -56,8 +63,11 @@ const SOCCER_SPORTS = [
 
 export async function getOddsForSport(sportKey: string): Promise<OddsApiEvent[]> {
   try {
-    if (!API_KEY) {
-      console.error(`No API key available for odds API`)
+    console.log(`Getting odds for ${sportKey}...`)
+    console.log(`API Key status: ${API_KEY ? 'SET (' + API_KEY.substring(0, 8) + '...)' : 'NOT SET'}`)
+
+    if (!API_KEY || API_KEY === 'NOT SET') {
+      console.error(`No API key available for odds API. Available env vars:`, Object.keys(process.env).filter(key => key.toLowerCase().includes('odds')))
       return []
     }
 

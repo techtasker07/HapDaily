@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CalendarDays, TrendingUp, Target, Clock, RefreshCw, Trophy, Users, BarChart3 } from "lucide-react"
 
 interface Pick {
@@ -23,10 +24,26 @@ interface Pick {
   confidence: "High" | "Very High" | "Extreme"
 }
 
+interface Fixture {
+  id: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  kickoffTime: string
+  status: string
+  hasOdds: boolean
+  homeProbability?: number
+}
+
 export function HapDailyDashboard() {
   const [picks, setPicks] = useState<Pick[]>([])
+  const [fixtures, setFixtures] = useState<Fixture[]>([])
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [apiStatus, setApiStatus] = useState({
+    footballData: { success: false, error: null as string | null },
+    oddsApi: { success: false, error: null as string | null }
+  })
   const [stats, setStats] = useState({
     totalPicks: 0,
     totalFixtures: 0,
@@ -34,53 +51,38 @@ export function HapDailyDashboard() {
     averageProbability: 0
   })
 
-  const fetchPicks = async () => {
+  const fetchDashboardData = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/picks')
+      const response = await fetch('/api/dashboard-data')
       const data = await response.json()
 
       if (data.success) {
         setPicks(data.picks || [])
+        setFixtures(data.fixtures || [])
         setStats(data.stats || stats)
+        setApiStatus(data.apiStatus || apiStatus)
         setLastUpdated(new Date(data.lastUpdated))
       } else {
-        console.error('Failed to fetch picks:', data.error)
+        console.error('Failed to fetch dashboard data:', data.error)
         setPicks([])
+        setFixtures([])
       }
     } catch (error) {
-      console.error('Error fetching picks:', error)
+      console.error('Error fetching dashboard data:', error)
       setPicks([])
+      setFixtures([])
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchPicks()
+    fetchDashboardData()
   }, [])
 
-  const refreshPicks = async () => {
-    try {
-      setLoading(true)
-
-      // Trigger a refresh of the data
-      const refreshResponse = await fetch('/api/picks', { method: 'POST' })
-      const refreshData = await refreshResponse.json()
-
-      if (refreshData.success) {
-        // Wait a moment for the refresh to complete, then fetch new data
-        setTimeout(() => {
-          fetchPicks()
-        }, 2000)
-      } else {
-        console.error('Failed to refresh picks:', refreshData.error)
-        setLoading(false)
-      }
-    } catch (error) {
-      console.error('Error refreshing picks:', error)
-      setLoading(false)
-    }
+  const refreshData = async () => {
+    await fetchDashboardData()
   }
 
   const getConfidenceColor = (confidence: string) => {
@@ -140,7 +142,7 @@ export function HapDailyDashboard() {
                   Updated {lastUpdated.toLocaleTimeString()}
                 </div>
               )}
-              <Button onClick={refreshPicks} disabled={loading} size="sm" className="flex items-center gap-2">
+              <Button onClick={refreshData} disabled={loading} size="sm" className="flex items-center gap-2">
                 <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
@@ -215,124 +217,200 @@ export function HapDailyDashboard() {
           </Card>
         </div>
 
-        {/* Main Content */}
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">Today's Best Picks</h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                High-probability home wins (≥40% confidence - testing)
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <CalendarDays className="h-4 w-4" />
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {[1, 2, 3, 4].map((i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="space-y-4">
-                      <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
-                      <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded"></div>
-                      <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : picks.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                  <Target className="h-8 w-8 text-slate-400" />
+        {/* API Status */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <Card className={`border-l-4 ${apiStatus.footballData.success ? 'border-l-green-500' : 'border-l-red-500'}`}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Football Data API</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    {apiStatus.footballData.success ? `${apiStatus.footballData.count} fixtures` : 'Failed'}
+                  </p>
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">No Confident Picks Today</h3>
-                <p className="text-slate-600 dark:text-slate-400">
-                  No matches meet our ≥40% confidence threshold today. Check back later!
-                </p>
+                <div className={`w-3 h-3 rounded-full ${apiStatus.footballData.success ? 'bg-green-500' : 'bg-red-500'}`} />
+              </div>
+              {apiStatus.footballData.error && (
+                <p className="text-xs text-red-600 mt-1">{apiStatus.footballData.error}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={`border-l-4 ${apiStatus.oddsApi.success ? 'border-l-green-500' : 'border-l-red-500'}`}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Odds API</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    {apiStatus.oddsApi.success ? `${apiStatus.oddsApi.count} events` : 'Failed'}
+                  </p>
+                </div>
+                <div className={`w-3 h-3 rounded-full ${apiStatus.oddsApi.success ? 'bg-green-500' : 'bg-red-500'}`} />
+              </div>
+              {apiStatus.oddsApi.error && (
+                <p className="text-xs text-red-600 mt-1">{apiStatus.oddsApi.error}</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Content - Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Fixtures Table */}
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5" />
+                  Today's Fixtures ({fixtures.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-96 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Match</TableHead>
+                        <TableHead>League</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Odds</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {fixtures.map((fixture) => (
+                        <TableRow key={fixture.id}>
+                          <TableCell className="text-xs">
+                            {new Date(fixture.kickoffTime).toLocaleTimeString("en-US", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <div className="font-medium">{fixture.homeTeam}</div>
+                              <div className="text-slate-600 dark:text-slate-400">vs {fixture.awayTeam}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">{fixture.league}</TableCell>
+                          <TableCell>
+                            <Badge variant={fixture.status === 'TIMED' ? 'default' : 'secondary'} className="text-xs">
+                              {fixture.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className={`w-2 h-2 rounded-full ${fixture.hasOdds ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {picks.map((pick, index) => (
-                <Card key={pick.id} className="hover:shadow-lg transition-shadow duration-200">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge variant="outline" className="text-xs">
-                            {pick.league}
-                          </Badge>
-                          <Badge className={`text-xs text-white ${getConfidenceColor(pick.confidence)}`}>
-                            {pick.confidence}
-                          </Badge>
-                        </div>
-                        <CardTitle className="text-lg sm:text-xl leading-tight">
-                          <span className="font-bold text-green-600 dark:text-green-400">{pick.homeTeam}</span>
-                          <span className="text-slate-500 dark:text-slate-400 mx-2">vs</span>
-                          <span className="font-medium">{pick.awayTeam}</span>
-                        </CardTitle>
+          </div>
+
+          {/* Right Column - Selected Picks */}
+          <div className="lg:col-span-1">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Selected Picks ({picks.length})
+                </CardTitle>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  High-probability home wins (≥40% confidence - testing)
+                </p>
+              </CardHeader>
+              <CardContent>
+
+                {loading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-2"></div>
+                        <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-2/3"></div>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
-                          {Math.round(pick.homeProbability * 100)}%
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{formatTime(pick.kickoffTime)}</div>
-                      </div>
+                    ))}
+                  </div>
+                ) : picks.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4">
+                      <Target className="h-6 w-6 text-slate-400" />
                     </div>
-                  </CardHeader>
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">No Confident Picks</h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      No matches meet our ≥40% confidence threshold today.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {picks.map((pick, index) => (
+                      <Card key={pick.id} className="hover:shadow-md transition-shadow duration-200">
+                        <CardContent className="p-4">
+                          <div className="space-y-3">
+                            {/* Header */}
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <Badge className={getConfidenceColor(pick.confidence)} size="sm">
+                                  {pick.confidence}
+                                </Badge>
+                                <h4 className="font-semibold text-sm text-slate-900 dark:text-white mt-1 leading-tight">
+                                  {pick.homeTeam}
+                                  <span className="text-slate-600 dark:text-slate-400 font-normal"> vs </span>
+                                  {pick.awayTeam}
+                                </h4>
+                                <p className="text-xs text-slate-600 dark:text-slate-400">
+                                  {formatTime(pick.kickoffTime)} • {pick.league}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                                  {Math.round(pick.homeProbability * 100)}%
+                                </div>
+                              </div>
+                            </div>
 
-                  <CardContent className="pt-0">
-                    <div className="space-y-4">
-                      {/* Odds */}
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded">
-                          <div className="text-xs text-slate-600 dark:text-slate-400">Home</div>
-                          <div className="font-bold text-green-600 dark:text-green-400">{pick.homeOdds.toFixed(2)}</div>
-                        </div>
-                        <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded">
-                          <div className="text-xs text-slate-600 dark:text-slate-400">Draw</div>
-                          <div className="font-bold">{pick.drawOdds.toFixed(2)}</div>
-                        </div>
-                        <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded">
-                          <div className="text-xs text-slate-600 dark:text-slate-400">Away</div>
-                          <div className="font-bold">{pick.awayOdds.toFixed(2)}</div>
-                        </div>
-                      </div>
+                            {/* Odds */}
+                            <div className="grid grid-cols-3 gap-1 text-center text-xs">
+                              <div className="bg-green-50 dark:bg-green-900/20 rounded p-1">
+                                <div className="text-slate-600 dark:text-slate-400">H</div>
+                                <div className="font-semibold text-green-700 dark:text-green-400">{pick.homeOdds}</div>
+                              </div>
+                              <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
+                                <div className="text-slate-600 dark:text-slate-400">D</div>
+                                <div className="font-semibold">{pick.drawOdds}</div>
+                              </div>
+                              <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
+                                <div className="text-slate-600 dark:text-slate-400">A</div>
+                                <div className="font-semibold">{pick.awayOdds}</div>
+                              </div>
+                            </div>
 
-                      <Separator />
-
-                      {/* Form and Stats */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Home Form (Last 5)</div>
-                          <div className="flex items-center">{formatForm(pick.homeForm)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Away Form (Last 5)</div>
-                          <div className="flex items-center">{formatForm(pick.awayForm)}</div>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center text-xs text-slate-600 dark:text-slate-400">
-                        <span>Standings Gap: +{pick.standingsGap} positions</span>
-                        <span>Pick #{index + 1}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+                            {/* Form */}
+                            <div className="text-xs">
+                              <div className="flex justify-between items-center">
+                                <span className="text-slate-600 dark:text-slate-400">Form:</span>
+                                <div className="flex gap-1">
+                                  {formatForm(pick.homeForm)}
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center mt-1">
+                                <span className="text-slate-600 dark:text-slate-400">Gap:</span>
+                                <span>+{pick.standingsGap}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Footer Info */}

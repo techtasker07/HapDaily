@@ -161,7 +161,22 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
       }
     }
     
-    console.log('Prediction generation completed:', result.stats)
+    console.log('=== PREDICTION SUMMARY ===')
+    console.log(`📊 Total fixtures found: ${result.stats.totalFixtures}`)
+    console.log(`🎯 Fixtures with odds: ${result.stats.fixturesWithOdds}`)
+    console.log(`✅ Qualifying fixtures (≥${HOME_WIN_THRESHOLD * 100}%): ${result.stats.qualifyingFixtures}`)
+    console.log(`🏆 Selected picks: ${result.stats.selectedPicks}`)
+
+    if (result.selectedPicks.length > 0) {
+      console.log('📋 Selected picks:')
+      result.selectedPicks.forEach((pick, index) => {
+        console.log(`  ${index + 1}. ${pick.homeTeam} vs ${pick.awayTeam} (${pick.league})`)
+        console.log(`     Probability: ${(pick.homeProbability * 100).toFixed(1)}% | Confidence: ${pick.confidence}`)
+        console.log(`     Odds: ${pick.homeOdds} | Standings Gap: +${pick.standingsGap}`)
+      })
+    }
+    console.log('========================')
+
     return result
     
   } catch (error) {
