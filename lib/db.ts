@@ -1,7 +1,16 @@
 import { Pool, QueryResultRow } from "pg"
 
+const connectionString = process.env.DB_EXTERNAL_URL || process.env.DATABASE_URL
+
+console.log('Database connection info:', {
+  hasDbExternalUrl: !!process.env.DB_EXTERNAL_URL,
+  hasDatabaseUrl: !!process.env.DATABASE_URL,
+  nodeEnv: process.env.NODE_ENV,
+  connectionStringPrefix: connectionString ? connectionString.substring(0, 20) + '...' : 'NOT SET'
+})
+
 export const pool = new Pool({
-  connectionString: process.env.DB_EXTERNAL_URL || process.env.DATABASE_URL,
+  connectionString,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 })
 

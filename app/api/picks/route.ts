@@ -105,28 +105,38 @@ export async function GET() {
 // Optional: Allow manual refresh trigger
 export async function POST() {
   try {
+    // Build the correct URL for the refresh endpoint
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000'
+
+    const refreshUrl = `${baseUrl}/api/refresh`
+    console.log(`Triggering refresh at: ${refreshUrl}`)
+
     // Trigger a refresh by calling the refresh endpoint
-    const refreshResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/refresh`, {
+    const refreshResponse = await fetch(refreshUrl, {
       method: 'GET'
     })
-    
+
     if (!refreshResponse.ok) {
-      throw new Error('Failed to trigger refresh')
+      const errorText = await refreshResponse.text()
+      throw new Error(`Failed to trigger refresh: ${refreshResponse.status} ${errorText}`)
     }
-    
+
     const refreshData = await refreshResponse.json()
-    
+
     return NextResponse.json({
       success: true,
       message: "Refresh triggered successfully",
       refreshResult: refreshData
     })
-    
+
   } catch (error) {
     console.error("Error triggering refresh:", error)
-    return NextResponse.json({ 
-      success: false, 
-      error: "Failed to trigger refresh"
+    return NextResponse.json({
+      success: false,
+      error: "Failed to trigger refresh",
+      details: error instanceof Error ? error.message : "Unknown error"
     }, { status: 500 })
   }
 }

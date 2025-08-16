@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getTodaysFixtures } from "@/lib/football-data"
 import { getAllTodaysOdds } from "@/lib/odds-api"
+import { query } from "@/lib/db"
 
 export async function GET() {
   try {
@@ -34,17 +35,33 @@ export async function GET() {
       oddsApiError = error instanceof Error ? error.message : "Unknown error"
     }
     
+    // Test Database Connection
+    let dbResult = null
+    let dbError = null
+    try {
+      const dbTest = await query('SELECT NOW() as current_time')
+      dbResult = {
+        success: true,
+        currentTime: dbTest[0]?.current_time
+      }
+    } catch (error) {
+      dbError = error instanceof Error ? error.message : "Unknown error"
+    }
+
     // Check environment variables
     const envCheck = {
       footballDataToken: !!process.env.FOOTBALL_DATA_TOKEN,
       oddsApiKey: !!process.env.ODDS_API_KEY,
-      dbUrl: !!process.env.DB_EXTERNAL_URL
+      dbExternalUrl: !!process.env.DB_EXTERNAL_URL,
+      databaseUrl: !!process.env.DATABASE_URL,
+      nodeEnv: process.env.NODE_ENV
     }
     
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       environment: envCheck,
+      database: dbResult || { success: false, error: dbError },
       footballData: footballDataResult || { success: false, error: footballDataError },
       oddsApi: oddsApiResult || { success: false, error: oddsApiError }
     })
