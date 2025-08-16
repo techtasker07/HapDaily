@@ -85,26 +85,40 @@ export async function getTodaysFixtures(): Promise<FootballDataFixture[]> {
   try {
     const today = new Date().toISOString().split('T')[0]
     const url = `${FOOTBALL_DATA_BASE_URL}/matches?dateFrom=${today}&dateTo=${today}`
-    
+
     console.log(`Fetching fixtures from: ${url}`)
-    
+    console.log(`Using API token: ${API_TOKEN ? API_TOKEN.substring(0, 8) + '...' : 'NOT SET'}`)
+
     const response = await fetch(url, { headers })
-    
+
+    console.log(`Football Data API response status: ${response.status}`)
+
     if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`Football Data API error response:`, errorText)
       throw new Error(`Football Data API error: ${response.status} ${response.statusText}`)
     }
-    
+
     const data: FootballDataResponse = await response.json()
-    
+
+    console.log(`Total matches found: ${data.matches.length}`)
+
+    // Log all matches for debugging
+    data.matches.forEach(match => {
+      console.log(`Match: ${match.homeTeam.name} vs ${match.awayTeam.name} (${match.competition.name}) - Status: ${match.status}`)
+    })
+
     // Filter for supported competitions and scheduled matches
-    const filteredMatches = data.matches.filter(match => 
+    const filteredMatches = data.matches.filter(match =>
       SUPPORTED_COMPETITIONS.includes(match.competition.code) &&
       match.status === 'SCHEDULED'
     )
-    
+
     console.log(`Found ${filteredMatches.length} matches in supported leagues for today`)
+    console.log(`Supported competitions: ${SUPPORTED_COMPETITIONS.join(', ')}`)
+
     return filteredMatches
-    
+
   } catch (error) {
     console.error('Error fetching today\'s fixtures:', error)
     throw error

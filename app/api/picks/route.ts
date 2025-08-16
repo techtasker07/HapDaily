@@ -20,30 +20,145 @@ export interface Pick {
 export async function GET() {
   try {
     const today = new Date().toISOString().split("T")[0]
-    
-    // Get today's picks with fixture details
-    const picks = await query(`
-      SELECT 
-        f.id,
-        f.external_id,
-        f.home_team,
-        f.away_team,
-        f.league,
-        f.kickoff_time,
-        f.home_odds,
-        f.draw_odds,
-        f.away_odds,
-        f.home_probability,
-        f.standings_gap,
-        f.home_form,
-        f.away_form,
-        dp.confidence_level,
-        dp.rank_order
-      FROM daily_picks dp
-      JOIN fixtures f ON dp.fixture_id = f.id
-      WHERE dp.pick_date = $1
-      ORDER BY dp.rank_order ASC
-    `, [today])
+
+    // Check if database is available
+    if (!process.env.DB_EXTERNAL_URL) {
+      console.log("No database configured, fetching fresh data from APIs...")
+      // Call refresh endpoint to get fresh data
+      const { generateDailyPredictions } = await import("@/lib/prediction-engine")
+      const predictionResult = await generateDailyPredictions()
+
+      const formattedPicks: Pick[] = predictionResult.selectedPicks.map((pick, index) => ({
+        id: pick.externalId,
+        homeTeam: pick.homeTeam,
+        awayTeam: pick.awayTeam,
+        league: pick.league,
+        kickoffTime: pick.kickoffTime,
+        homeProbability: pick.homeProbability,
+        homeOdds: pick.homeOdds,
+        awayOdds: pick.awayOdds,
+        drawOdds: pick.drawOdds,
+        standingsGap: pick.standingsGap,
+        homeForm: pick.homeForm,
+        awayForm: pick.awayForm,
+        confidence: pick.confidence
+      }))
+
+      return NextResponse.json({
+        success: true,
+        picks: formattedPicks,
+        stats: {
+          totalPicks: formattedPicks.length,
+          totalFixtures: predictionResult.stats.totalFixtures,
+          qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
+          averageProbability: formattedPicks.length > 0
+            ? formattedPicks.reduce((sum, pick) => sum + pick.homeProbability, 0) / formattedPicks.length
+            : 0
+        },
+        lastUpdated: new Date().toISOString()
+      })
+    }
+
+    // Try to get today's picks from database
+    let picks = []
+    try {
+      picks = await query(`
+        SELECT
+          f.id,
+          f.external_id,
+          f.home_team,
+          f.away_team,
+          f.league,
+          f.kickoff_time,
+          f.home_odds,
+          f.draw_odds,
+          f.away_odds,
+          f.home_probability,
+          f.standings_gap,
+          f.home_form,
+          f.away_form,
+          dp.confidence_level,
+          dp.rank_order
+        FROM daily_picks dp
+        JOIN fixtures f ON dp.fixture_id = f.id
+        WHERE dp.pick_date = $1
+        ORDER BY dp.rank_order ASC
+      `, [today])
+    } catch (dbError) {
+      console.log("Database error, falling back to API:", dbError)
+      // Fallback to API if database fails
+      const { generateDailyPredictions } = await import("@/lib/prediction-engine")
+      const predictionResult = await generateDailyPredictions()
+
+      const formattedPicks: Pick[] = predictionResult.selectedPicks.map((pick, index) => ({
+        id: pick.externalId,
+        homeTeam: pick.homeTeam,
+        awayTeam: pick.awayTeam,
+        league: pick.league,
+        kickoffTime: pick.kickoffTime,
+        homeProbability: pick.homeProbability,
+        homeOdds: pick.homeOdds,
+        awayOdds: pick.awayOdds,
+        drawOdds: pick.drawOdds,
+        standingsGap: pick.standingsGap,
+        homeForm: pick.homeForm,
+        awayForm: pick.awayForm,
+        confidence: pick.confidence
+      }))
+
+      return NextResponse.json({
+        success: true,
+        picks: formattedPicks,
+        stats: {
+          totalPicks: formattedPicks.length,
+          totalFixtures: predictionResult.stats.totalFixtures,
+          qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
+          averageProbability: formattedPicks.length > 0
+            ? formattedPicks.reduce((sum, pick) => sum + pick.homeProbability, 0) / formattedPicks.length
+            : 0
+        },
+        lastUpdated: new Date().toISOString(),
+        source: "api_fallback"
+      })
+    }
+
+    // If no picks in database, fetch fresh data
+    if (picks.length === 0) {
+      console.log("No picks found in database, fetching fresh data...")
+      const { generateDailyPredictions } = await import("@/lib/prediction-engine")
+      const predictionResult = await generateDailyPredictions()
+
+      const formattedPicks: Pick[] = predictionResult.selectedPicks.map((pick, index) => ({
+        id: pick.externalId,
+        homeTeam: pick.homeTeam,
+        awayTeam: pick.awayTeam,
+        league: pick.league,
+        kickoffTime: pick.kickoffTime,
+        homeProbability: pick.homeProbability,
+        homeOdds: pick.homeOdds,
+        awayOdds: pick.awayOdds,
+        drawOdds: pick.drawOdds,
+        standingsGap: pick.standingsGap,
+        homeForm: pick.homeForm,
+        awayForm: pick.awayForm,
+        confidence: pick.confidence
+      }))
+
+      return NextResponse.json({
+        success: true,
+        picks: formattedPicks,
+        stats: {
+          totalPicks: formattedPicks.length,
+          totalFixtures: predictionResult.stats.totalFixtures,
+          qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
+          averageProbability: formattedPicks.length > 0
+            ? formattedPicks.reduce((sum, pick) => sum + pick.homeProbability, 0) / formattedPicks.length
+            : 0
+        },
+        lastUpdated: new Date().toISOString(),
+        source: "fresh_api"
+      })
+    }
 
     // Transform to frontend format
     const formattedPicks: Pick[] = picks.map((pick: any) => ({
@@ -105,37 +220,35 @@ export async function GET() {
 // Optional: Allow manual refresh trigger
 export async function POST() {
   try {
-    // Build the correct URL for the refresh endpoint
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
+    console.log("Manual refresh triggered via POST")
 
-    const refreshUrl = `${baseUrl}/api/refresh`
-    console.log(`Triggering refresh at: ${refreshUrl}`)
+    // Instead of calling the refresh endpoint via HTTP, call the function directly
+    const { generateDailyPredictions } = await import("@/lib/prediction-engine")
+    const predictionResult = await generateDailyPredictions()
 
-    // Trigger a refresh by calling the refresh endpoint
-    const refreshResponse = await fetch(refreshUrl, {
-      method: 'GET'
-    })
-
-    if (!refreshResponse.ok) {
-      const errorText = await refreshResponse.text()
-      throw new Error(`Failed to trigger refresh: ${refreshResponse.status} ${errorText}`)
+    // Format the response similar to the refresh endpoint
+    const response = {
+      success: true,
+      message: "Refresh completed successfully",
+      timestamp: new Date().toISOString(),
+      stats: predictionResult.stats,
+      picks: predictionResult.selectedPicks.map(pick => ({
+        homeTeam: pick.homeTeam,
+        awayTeam: pick.awayTeam,
+        league: pick.league,
+        probability: Math.round(pick.homeProbability * 100),
+        confidence: pick.confidence
+      }))
     }
 
-    const refreshData = await refreshResponse.json()
-
-    return NextResponse.json({
-      success: true,
-      message: "Refresh triggered successfully",
-      refreshResult: refreshData
-    })
+    console.log("Manual refresh completed:", response.stats)
+    return NextResponse.json(response)
 
   } catch (error) {
-    console.error("Error triggering refresh:", error)
+    console.error("Error in manual refresh:", error)
     return NextResponse.json({
       success: false,
-      error: "Failed to trigger refresh",
+      error: "Failed to refresh picks",
       details: error instanceof Error ? error.message : "Unknown error"
     }, { status: 500 })
   }

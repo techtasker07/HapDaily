@@ -65,28 +65,48 @@ export async function getOddsForSport(sportKey: string): Promise<OddsApiEvent[]>
       dateFormat: 'iso'
     })
 
-    console.log(`Fetching odds for ${sportKey}`)
-    
-    const response = await fetch(`${url}?${params}`)
-    
+    const fullUrl = `${url}?${params}`
+    console.log(`Fetching odds for ${sportKey} from: ${fullUrl.replace(API_KEY || '', 'API_KEY_HIDDEN')}`)
+    console.log(`Using API key: ${API_KEY ? API_KEY.substring(0, 8) + '...' : 'NOT SET'}`)
+
+    const response = await fetch(fullUrl)
+
+    console.log(`Odds API response status for ${sportKey}: ${response.status}`)
+
     if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`Odds API error for ${sportKey}:`, errorText)
       throw new Error(`Odds API error: ${response.status} ${response.statusText}`)
     }
-    
+
     const events: OddsApiEvent[] = await response.json()
-    
+
+    console.log(`Total events found for ${sportKey}: ${events.length}`)
+
     // Filter for today's matches
     const today = new Date()
     const todayStr = today.toISOString().split('T')[0]
-    
+
     const todaysEvents = events.filter(event => {
       const eventDate = new Date(event.commence_time).toISOString().split('T')[0]
       return eventDate === todayStr
     })
-    
+
     console.log(`Found ${todaysEvents.length} events for ${sportKey} today`)
+
+    // Log sample event for debugging
+    if (todaysEvents.length > 0) {
+      console.log(`Sample event for ${sportKey}:`, {
+        id: todaysEvents[0].id,
+        home_team: todaysEvents[0].home_team,
+        away_team: todaysEvents[0].away_team,
+        commence_time: todaysEvents[0].commence_time,
+        bookmakers_count: todaysEvents[0].bookmakers?.length || 0
+      })
+    }
+
     return todaysEvents
-    
+
   } catch (error) {
     console.error(`Error fetching odds for ${sportKey}:`, error)
     return []

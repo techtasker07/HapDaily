@@ -2,15 +2,20 @@ import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { generateDailyPredictions, validatePredictionData } from "@/lib/prediction-engine"
 
-// This is called by Vercel Cron Jobs
+// This is called by Vercel Cron Jobs or manually
 export async function GET() {
   try {
     console.log("Starting daily picks refresh...")
+    console.log("Environment check:", {
+      hasFootballDataToken: !!process.env.FOOTBALL_DATA_TOKEN,
+      hasOddsApiKey: !!process.env.ODDS_API_KEY,
+      hasDbUrl: !!process.env.DB_EXTERNAL_URL
+    })
 
     const today = new Date().toISOString().split("T")[0]
 
     // Step 1: Generate predictions using real APIs
-    console.log("Generating predictions...")
+    console.log("Generating predictions from APIs...")
     const predictionResult = await generateDailyPredictions()
 
     console.log("Prediction results:", {
@@ -19,6 +24,24 @@ export async function GET() {
       qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
       selectedPicks: predictionResult.stats.selectedPicks
     })
+
+    // If no database connection, return the results directly
+    if (!process.env.DB_EXTERNAL_URL) {
+      console.log("No database configured, returning API results directly")
+      return NextResponse.json({
+        success: true,
+        message: "Predictions generated successfully (no database)",
+        timestamp: new Date().toISOString(),
+        stats: predictionResult.stats,
+        picks: predictionResult.selectedPicks.map(pick => ({
+          homeTeam: pick.homeTeam,
+          awayTeam: pick.awayTeam,
+          league: pick.league,
+          probability: Math.round(pick.homeProbability * 100),
+          confidence: pick.confidence
+        }))
+      })
+    }
 
     // Step 2: Clear today's existing data
     console.log("Clearing existing data for today...")
