@@ -13,6 +13,13 @@ export async function GET() {
     console.log("Generating predictions...")
     const predictionResult = await generateDailyPredictions()
 
+    console.log("Prediction results:", {
+      totalFixtures: predictionResult.stats.totalFixtures,
+      fixturesWithOdds: predictionResult.stats.fixturesWithOdds,
+      qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
+      selectedPicks: predictionResult.stats.selectedPicks
+    })
+
     // Step 2: Clear today's existing data
     console.log("Clearing existing data for today...")
     await query("DELETE FROM daily_picks WHERE pick_date = $1", [today])

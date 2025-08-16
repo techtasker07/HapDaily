@@ -30,7 +30,7 @@ export interface PredictionResult {
   }
 }
 
-const HOME_WIN_THRESHOLD = 0.80 // 80% minimum probability
+const HOME_WIN_THRESHOLD = 0.40 // 40% minimum probability (testing)
 const MAX_PICKS = 4
 const MIN_PICKS = 2
 
@@ -59,6 +59,10 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
         const matchingOddsEvent = matchFixtureWithOdds(fixture, oddsEvents)
         if (!matchingOddsEvent) {
           console.log(`No odds found for ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`)
+          console.log(`Available odds events: ${oddsEvents.length}`)
+          if (oddsEvents.length > 0) {
+            console.log(`Sample odds event:`, oddsEvents[0])
+          }
           continue
         }
         
@@ -68,6 +72,12 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
           console.log(`No valid odds data for ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`)
           continue
         }
+
+        console.log(`Odds for ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}:`, {
+          homeOdds: oddsData.homeOdds,
+          homeProbability: oddsData.homeProbability,
+          bookmaker: oddsData.bookmaker
+        })
         
         // Get standings data for gap calculation
         const standings = await getCompetitionStandings(fixture.competition.code)
