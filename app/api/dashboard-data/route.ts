@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getTodaysFixtures } from "@/lib/football-data"
-import { getAllTodaysOdds } from "@/lib/odds-api"
+import { getAllRapidApiOdds } from "@/lib/rapidapi-odds"
 import { generateDailyPredictions } from "@/lib/prediction-engine"
 
 export async function GET() {
@@ -61,16 +61,16 @@ export async function GET() {
       }
     }
     
-    // Fetch odds from Odds API
+    // Fetch odds from RapidAPI
     let allOdds: any[] = []
     try {
-      console.log("💰 Fetching odds from Odds API...")
-      allOdds = await getAllTodaysOdds()
+      console.log("💰 Fetching odds from RapidAPI...")
+      allOdds = await getAllRapidApiOdds()
       apiStatus.oddsApi.success = true
       apiStatus.oddsApi.count = allOdds.length
-      console.log(`✅ Odds API: ${allOdds.length} events found`)
+      console.log(`✅ RapidAPI: ${allOdds.length} events found`)
     } catch (error) {
-      console.error("❌ Odds API failed:", error)
+      console.error("❌ RapidAPI failed:", error)
       apiStatus.oddsApi.error = error instanceof Error ? error.message : "Unknown error"
     }
     

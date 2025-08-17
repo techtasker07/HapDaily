@@ -1,5 +1,5 @@
 import { getTodaysFixtures, getCompetitionStandings, getTeamForm, getStandingsGap } from './football-data'
-import { getAllTodaysOdds, getBestOddsForEvent, getConfidenceLevel } from './odds-api'
+import { getAllRapidApiOdds, getBestRapidApiOddsForEvent, getConfidenceLevel } from './rapidapi-odds'
 import { matchFixtureWithOdds } from './team-matcher'
 
 export interface ProcessedFixture {
@@ -44,9 +44,9 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
     console.log(`Found ${fixtures.length} fixtures`)
     
     // Step 2: Fetch odds for all events
-    console.log('Fetching odds data...')
-    const oddsEvents = await getAllTodaysOdds()
-    console.log(`Found ${oddsEvents.length} odds events`)
+    console.log('📊 Fetching odds data from RapidAPI...')
+    const oddsEvents = await getAllRapidApiOdds()
+    console.log(`Found ${oddsEvents.length} RapidAPI odds events`)
     
     // Step 3: Process each fixture
     const processedFixtures: ProcessedFixture[] = []
@@ -67,9 +67,9 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
         }
         
         // Get best odds for this event
-        const oddsData = getBestOddsForEvent(matchingOddsEvent)
+        const oddsData = getBestRapidApiOddsForEvent(matchingOddsEvent)
         if (!oddsData) {
-          console.log(`No valid odds data for ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`)
+          console.log(`No valid RapidAPI odds data for ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`)
           continue
         }
 
