@@ -17,13 +17,48 @@ export async function GET() {
     let allFixtures: any[] = []
     try {
       console.log("📊 Fetching fixtures from Football Data API...")
+      console.log("Environment check:", {
+        hasToken: !!process.env.FOOTBALL_DATA_TOKEN,
+        tokenPreview: process.env.FOOTBALL_DATA_TOKEN ? process.env.FOOTBALL_DATA_TOKEN.substring(0, 8) + '...' : 'NOT SET'
+      })
+
       allFixtures = await getTodaysFixtures()
       apiStatus.footballData.success = true
       apiStatus.footballData.count = allFixtures.length
       console.log(`✅ Football Data API: ${allFixtures.length} fixtures found`)
+
+      if (allFixtures.length > 0) {
+        console.log("Sample fixture:", {
+          id: allFixtures[0].id,
+          homeTeam: allFixtures[0].homeTeam.name,
+          awayTeam: allFixtures[0].awayTeam.name,
+          competition: allFixtures[0].competition.name,
+          status: allFixtures[0].status
+        })
+      }
     } catch (error) {
       console.error("❌ Football Data API failed:", error)
       apiStatus.footballData.error = error instanceof Error ? error.message : "Unknown error"
+
+      // Try direct API call for debugging
+      try {
+        console.log("🔍 Attempting direct API call for debugging...")
+        const today = new Date().toISOString().split('T')[0]
+        const url = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${today}`
+        const response = await fetch(url, {
+          headers: {
+            'X-Auth-Token': process.env.FOOTBALL_DATA_TOKEN || '',
+            'Content-Type': 'application/json'
+          }
+        })
+        console.log("Direct API call status:", response.status)
+        if (response.ok) {
+          const directData = await response.json()
+          console.log("Direct API call returned:", directData.matches?.length || 0, "matches")
+        }
+      } catch (directError) {
+        console.error("Direct API call also failed:", directError)
+      }
     }
     
     // Fetch odds from Odds API
@@ -59,11 +94,13 @@ export async function GET() {
       league: fixture.competition.name,
       kickoffTime: fixture.utcDate,
       status: fixture.status,
-      hasOdds: allOdds.some(odds => 
+      hasOdds: allOdds.some(odds =>
         odds.home_team.toLowerCase().includes(fixture.homeTeam.name.toLowerCase().split(' ')[0]) ||
         odds.away_team.toLowerCase().includes(fixture.awayTeam.name.toLowerCase().split(' ')[0])
       )
     }))
+
+    console.log(`📋 Formatted ${formattedFixtures.length} fixtures for display`)
     
     // Format picks for display
     const formattedPicks = picks.map(pick => ({

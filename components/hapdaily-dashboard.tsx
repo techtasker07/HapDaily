@@ -54,8 +54,21 @@ export function HapDailyDashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/dashboard-data')
-      const data = await response.json()
+      console.log("Fetching dashboard data...")
+
+      // Try main endpoint first
+      let response = await fetch('/api/dashboard-data')
+      let data = await response.json()
+
+      console.log("Dashboard data response:", data)
+
+      // If main endpoint fails or returns no fixtures, try raw endpoint
+      if (!data.success || (data.fixtures && data.fixtures.length === 0)) {
+        console.log("Main endpoint failed or returned no fixtures, trying raw endpoint...")
+        response = await fetch('/api/raw-fixtures')
+        data = await response.json()
+        console.log("Raw fixtures response:", data)
+      }
 
       if (data.success) {
         setPicks(data.picks || [])
@@ -63,6 +76,10 @@ export function HapDailyDashboard() {
         setStats(data.stats || stats)
         setApiStatus(data.apiStatus || apiStatus)
         setLastUpdated(new Date(data.lastUpdated))
+        console.log("Successfully set data:", {
+          picks: data.picks?.length || 0,
+          fixtures: data.fixtures?.length || 0
+        })
       } else {
         console.error('Failed to fetch dashboard data:', data.error)
         setPicks([])
