@@ -33,7 +33,7 @@ export interface PredictionResult {
   }
 }
 
-const WIN_PROBABILITY_THRESHOLD = 0.60 // 60% minimum probability for home OR away win
+const WIN_PROBABILITY_THRESHOLD = 0.50 // 50% minimum probability for home OR away win
 const MAX_PICKS = 4
 const MIN_PICKS = 2
 
