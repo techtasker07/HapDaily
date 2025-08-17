@@ -86,8 +86,14 @@ const SUPPORTED_COMPETITIONS = [
 
 export async function getTodaysFixtures(): Promise<FootballDataFixture[]> {
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const url = `${FOOTBALL_DATA_BASE_URL}/matches?dateFrom=${today}&dateTo=${today}`
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    console.log(`Date range: ${today} to ${tomorrow}`)
+
+    // Use wider date range to catch matches that might be scheduled for tomorrow
+    const url = `${FOOTBALL_DATA_BASE_URL}/matches?dateFrom=${today}&dateTo=${tomorrow}`
 
     console.log(`Fetching fixtures from: ${url}`)
     console.log(`Using API token: ${API_TOKEN ? API_TOKEN.substring(0, 8) + '...' : 'NOT SET'}`)

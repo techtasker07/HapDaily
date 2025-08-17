@@ -11,8 +11,14 @@ export async function GET() {
       })
     }
     
-    const today = new Date().toISOString().split('T')[0]
-    const url = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${today}`
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    console.log("Fetching matches for date range:", { today, tomorrow })
+
+    // Use wider date range to catch matches that might be scheduled for tomorrow
+    const url = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${tomorrow}`
     
     console.log("Fetching from:", url)
     console.log("Using token:", API_TOKEN.substring(0, 8) + '...')
@@ -36,9 +42,21 @@ export async function GET() {
     }
     
     const data = await response.json()
-    
-    // Format for our dashboard
-    const fixtures = data.matches.map((match: any) => ({
+
+    console.log("Raw API returned:", {
+      totalMatches: data.matches?.length || 0,
+      statuses: [...new Set(data.matches?.map((m: any) => m.status) || [])],
+      competitions: [...new Set(data.matches?.map((m: any) => m.competition.code) || [])]
+    })
+
+    // Filter out finished matches and format for our dashboard
+    const upcomingMatches = data.matches.filter((match: any) =>
+      match.status === 'SCHEDULED' || match.status === 'TIMED'
+    )
+
+    console.log("Filtered to upcoming matches:", upcomingMatches.length)
+
+    const fixtures = upcomingMatches.map((match: any) => ({
       id: match.id.toString(),
       homeTeam: match.homeTeam.name,
       awayTeam: match.awayTeam.name,

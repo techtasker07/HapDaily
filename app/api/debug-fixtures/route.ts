@@ -15,9 +15,20 @@ export async function GET() {
       })
     }
     
-    // Step 1: Test direct API call
-    const today = new Date().toISOString().split('T')[0]
-    const url = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${today}`
+    // Step 1: Test direct API call with date debugging
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    console.log("Date debugging:", {
+      now: now.toISOString(),
+      today: today,
+      tomorrow: tomorrow,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    })
+
+    // Try a wider date range to see what's available
+    const url = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${tomorrow}`
     
     console.log("Making direct API call to:", url)
     
