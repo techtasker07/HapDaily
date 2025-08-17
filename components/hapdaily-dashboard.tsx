@@ -340,7 +340,7 @@ export function HapDailyDashboard() {
                   Selected Picks ({picks.length})
                 </CardTitle>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  High-probability home or away wins (≥80% confidence)
+                  High-probability home or away wins (≥60% confidence)
                 </p>
               </CardHeader>
               <CardContent>
@@ -362,7 +362,7 @@ export function HapDailyDashboard() {
                     </div>
                     <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">No Confident Picks</h3>
                     <p className="text-xs text-slate-600 dark:text-slate-400">
-                      No matches meet our ≥80% confidence threshold today.
+                      No matches meet our ≥60% confidence threshold today.
                     </p>
                   </div>
                 ) : (
@@ -469,7 +469,7 @@ export function HapDailyDashboard() {
               <h3 className="font-semibold text-slate-900 dark:text-white mb-2">How It Works</h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
                 Our AI analyzes live odds from multiple bookmakers, team standings, recent form, and statistical models
-                to identify the most confident win predictions. Only matches with ≥80% home or away win probability are selected.
+                to identify the most confident win predictions. Only matches with ≥60% home or away win probability are selected.
               </p>
               <div className="flex flex-wrap justify-center gap-4 mt-4 text-xs text-slate-500 dark:text-slate-400">
                 <span>• Data from Football-Data.org</span>
