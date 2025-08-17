@@ -37,7 +37,10 @@ export async function GET() {
           homeTeam: pick.homeTeam,
           awayTeam: pick.awayTeam,
           league: pick.league,
-          probability: Math.round(pick.homeProbability * 100),
+          predictedOutcome: pick.predictedOutcome,
+          winProbability: Math.round(pick.winProbability * 100),
+          homeProbability: Math.round(pick.homeProbability * 100),
+          awayProbability: Math.round(pick.awayProbability * 100),
           confidence: pick.confidence
         }))
       })

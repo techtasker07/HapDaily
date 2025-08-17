@@ -12,6 +12,9 @@ export interface ProcessedFixture {
   drawOdds: number
   awayOdds: number
   homeProbability: number
+  awayProbability: number
+  predictedOutcome: 'HOME' | 'AWAY'
+  winProbability: number // The higher of home or away probability
   standingsGap: number
   homeForm: string
   awayForm: string
@@ -30,7 +33,7 @@ export interface PredictionResult {
   }
 }
 
-const HOME_WIN_THRESHOLD = 0.40 // 40% minimum probability (testing)
+const WIN_PROBABILITY_THRESHOLD = 0.80 // 80% minimum probability for home OR away win
 const MAX_PICKS = 4
 const MIN_PICKS = 2
 
@@ -75,7 +78,9 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
 
         console.log(`Odds for ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}:`, {
           homeOdds: oddsData.homeOdds,
+          awayOdds: oddsData.awayOdds,
           homeProbability: oddsData.homeProbability,
+          awayProbability: oddsData.awayProbability,
           bookmaker: oddsData.bookmaker
         })
         
@@ -89,6 +94,10 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
           getTeamForm(fixture.awayTeam.id, false)
         ])
         
+        // Determine predicted outcome and win probability
+        const predictedOutcome = oddsData.homeProbability >= oddsData.awayProbability ? 'HOME' : 'AWAY'
+        const winProbability = Math.max(oddsData.homeProbability, oddsData.awayProbability)
+
         // Create processed fixture
         const processedFixture: ProcessedFixture = {
           externalId: fixture.id.toString(),
@@ -100,15 +109,20 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
           drawOdds: oddsData.drawOdds,
           awayOdds: oddsData.awayOdds,
           homeProbability: oddsData.homeProbability,
+          awayProbability: oddsData.awayProbability,
+          predictedOutcome,
+          winProbability,
           standingsGap,
           homeForm,
           awayForm,
-          confidence: getConfidenceLevel(oddsData.homeProbability),
+          confidence: getConfidenceLevel(winProbability),
           bookmaker: oddsData.bookmaker
         }
         
         processedFixtures.push(processedFixture)
-        console.log(`Processed: ${processedFixture.homeTeam} vs ${processedFixture.awayTeam} - ${(processedFixture.homeProbability * 100).toFixed(1)}%`)
+        console.log(`Processed: ${processedFixture.homeTeam} vs ${processedFixture.awayTeam}`)
+        console.log(`  Prediction: ${processedFixture.predictedOutcome} win - ${(processedFixture.winProbability * 100).toFixed(1)}%`)
+        console.log(`  Home: ${(processedFixture.homeProbability * 100).toFixed(1)}% | Away: ${(processedFixture.awayProbability * 100).toFixed(1)}%`)
         
       } catch (error) {
         console.error(`Error processing fixture ${fixture.homeTeam.name} vs ${fixture.awayTeam.name}:`, error)
@@ -116,27 +130,31 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
     }
     
     // Step 4: Filter and rank fixtures
-    const qualifyingFixtures = processedFixtures.filter(fixture => 
-      fixture.homeProbability >= HOME_WIN_THRESHOLD
+    const qualifyingFixtures = processedFixtures.filter(fixture =>
+      fixture.winProbability >= WIN_PROBABILITY_THRESHOLD
     )
+
+    console.log(`${qualifyingFixtures.length} fixtures meet the ${WIN_PROBABILITY_THRESHOLD * 100}% win probability threshold`)
     
-    console.log(`${qualifyingFixtures.length} fixtures meet the ${HOME_WIN_THRESHOLD * 100}% threshold`)
-    
-    // Step 5: Rank by probability, then standings gap, then home form
+    // Step 5: Rank by win probability, then standings gap, then form
     const rankedFixtures = qualifyingFixtures.sort((a, b) => {
-      // Primary: Home probability (descending)
-      if (a.homeProbability !== b.homeProbability) {
-        return b.homeProbability - a.homeProbability
+      // Primary: Win probability (descending)
+      if (a.winProbability !== b.winProbability) {
+        return b.winProbability - a.winProbability
       }
-      
+
       // Secondary: Standings gap (descending - higher gap is better)
       if (a.standingsGap !== b.standingsGap) {
         return b.standingsGap - a.standingsGap
       }
-      
-      // Tertiary: Home form quality (count wins)
-      const aWins = (a.homeForm.match(/W/g) || []).length
-      const bWins = (b.homeForm.match(/W/g) || []).length
+
+      // Tertiary: Form quality (count wins for the predicted team)
+      const aWins = a.predictedOutcome === 'HOME'
+        ? (a.homeForm.match(/W/g) || []).length
+        : (a.awayForm.match(/W/g) || []).length
+      const bWins = b.predictedOutcome === 'HOME'
+        ? (b.homeForm.match(/W/g) || []).length
+        : (b.awayForm.match(/W/g) || []).length
       return bWins - aWins
     })
     
@@ -164,15 +182,16 @@ export async function generateDailyPredictions(): Promise<PredictionResult> {
     console.log('=== PREDICTION SUMMARY ===')
     console.log(`📊 Total fixtures found: ${result.stats.totalFixtures}`)
     console.log(`🎯 Fixtures with odds: ${result.stats.fixturesWithOdds}`)
-    console.log(`✅ Qualifying fixtures (≥${HOME_WIN_THRESHOLD * 100}%): ${result.stats.qualifyingFixtures}`)
+    console.log(`✅ Qualifying fixtures (≥${WIN_PROBABILITY_THRESHOLD * 100}% win probability): ${result.stats.qualifyingFixtures}`)
     console.log(`🏆 Selected picks: ${result.stats.selectedPicks}`)
 
     if (result.selectedPicks.length > 0) {
       console.log('📋 Selected picks:')
       result.selectedPicks.forEach((pick, index) => {
         console.log(`  ${index + 1}. ${pick.homeTeam} vs ${pick.awayTeam} (${pick.league})`)
-        console.log(`     Probability: ${(pick.homeProbability * 100).toFixed(1)}% | Confidence: ${pick.confidence}`)
-        console.log(`     Odds: ${pick.homeOdds} | Standings Gap: +${pick.standingsGap}`)
+        console.log(`     Prediction: ${pick.predictedOutcome} win - ${(pick.winProbability * 100).toFixed(1)}% | Confidence: ${pick.confidence}`)
+        console.log(`     Home: ${(pick.homeProbability * 100).toFixed(1)}% | Away: ${(pick.awayProbability * 100).toFixed(1)}%`)
+        console.log(`     Odds: H${pick.homeOdds} D${pick.drawOdds} A${pick.awayOdds} | Gap: +${pick.standingsGap}`)
       })
     }
     console.log('========================')
@@ -212,7 +231,10 @@ export function validatePredictionData(fixture: ProcessedFixture): boolean {
   if (!fixture.homeTeam || !fixture.awayTeam) return false
   if (!fixture.league || !fixture.kickoffTime) return false
   if (fixture.homeProbability < 0 || fixture.homeProbability > 1) return false
+  if (fixture.awayProbability < 0 || fixture.awayProbability > 1) return false
+  if (fixture.winProbability < 0 || fixture.winProbability > 1) return false
   if (fixture.homeOdds <= 1 || fixture.drawOdds <= 1 || fixture.awayOdds <= 1) return false
-  
+  if (!['HOME', 'AWAY'].includes(fixture.predictedOutcome)) return false
+
   return true
 }

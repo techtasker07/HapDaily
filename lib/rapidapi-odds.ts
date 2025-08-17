@@ -247,8 +247,8 @@ export function getBestRapidApiOddsForEvent(event: RapidApiEvent): NormalizedOdd
   return bestOdds
 }
 
-export function getConfidenceLevel(homeProbability: number): 'High' | 'Very High' | 'Extreme' {
-  if (homeProbability >= 0.90) return 'Extreme'
-  if (homeProbability >= 0.85) return 'Very High'
+export function getConfidenceLevel(winProbability: number): 'High' | 'Very High' | 'Extreme' {
+  if (winProbability >= 0.90) return 'Extreme'
+  if (winProbability >= 0.85) return 'Very High'
   return 'High'
 }

@@ -15,6 +15,9 @@ interface Pick {
   league: string
   kickoffTime: string
   homeProbability: number
+  awayProbability: number
+  predictedOutcome: 'HOME' | 'AWAY'
+  winProbability: number
   homeOdds: number
   awayOdds: number
   drawOdds: number
@@ -337,7 +340,7 @@ export function HapDailyDashboard() {
                   Selected Picks ({picks.length})
                 </CardTitle>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  High-probability home wins (≥40% confidence - testing)
+                  High-probability home or away wins (≥80% confidence)
                 </p>
               </CardHeader>
               <CardContent>
@@ -359,7 +362,7 @@ export function HapDailyDashboard() {
                     </div>
                     <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">No Confident Picks</h3>
                     <p className="text-xs text-slate-600 dark:text-slate-400">
-                      No matches meet our ≥40% confidence threshold today.
+                      No matches meet our ≥80% confidence threshold today.
                     </p>
                   </div>
                 ) : (
@@ -375,34 +378,63 @@ export function HapDailyDashboard() {
                                   {pick.confidence}
                                 </Badge>
                                 <h4 className="font-semibold text-sm text-slate-900 dark:text-white mt-1 leading-tight">
-                                  {pick.homeTeam}
+                                  <span className={pick.predictedOutcome === 'HOME' ? 'text-green-600 dark:text-green-400' : ''}>
+                                    {pick.homeTeam}
+                                  </span>
                                   <span className="text-slate-600 dark:text-slate-400 font-normal"> vs </span>
-                                  {pick.awayTeam}
+                                  <span className={pick.predictedOutcome === 'AWAY' ? 'text-green-600 dark:text-green-400' : ''}>
+                                    {pick.awayTeam}
+                                  </span>
                                 </h4>
                                 <p className="text-xs text-slate-600 dark:text-slate-400">
                                   {formatTime(pick.kickoffTime)} • {pick.league}
                                 </p>
+                                <p className="text-xs text-green-600 dark:text-green-400 font-medium">
+                                  Predicted: {pick.predictedOutcome === 'HOME' ? pick.homeTeam : pick.awayTeam} Win
+                                </p>
                               </div>
                               <div className="text-right">
                                 <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                                  {Math.round(pick.homeProbability * 100)}%
+                                  {Math.round(pick.winProbability * 100)}%
                                 </div>
                               </div>
                             </div>
 
-                            {/* Odds */}
-                            <div className="grid grid-cols-3 gap-1 text-center text-xs">
-                              <div className="bg-green-50 dark:bg-green-900/20 rounded p-1">
-                                <div className="text-slate-600 dark:text-slate-400">H</div>
-                                <div className="font-semibold text-green-700 dark:text-green-400">{pick.homeOdds}</div>
+                            {/* Probabilities */}
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <div className="text-slate-600 dark:text-slate-400 mb-1">Win Probabilities</div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between">
+                                    <span>Home:</span>
+                                    <span className={`font-semibold ${pick.predictedOutcome === 'HOME' ? 'text-green-600 dark:text-green-400' : ''}`}>
+                                      {Math.round(pick.homeProbability * 100)}%
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Away:</span>
+                                    <span className={`font-semibold ${pick.predictedOutcome === 'AWAY' ? 'text-green-600 dark:text-green-400' : ''}`}>
+                                      {Math.round(pick.awayProbability * 100)}%
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
-                                <div className="text-slate-600 dark:text-slate-400">D</div>
-                                <div className="font-semibold">{pick.drawOdds}</div>
-                              </div>
-                              <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
-                                <div className="text-slate-600 dark:text-slate-400">A</div>
-                                <div className="font-semibold">{pick.awayOdds}</div>
+                              <div>
+                                <div className="text-slate-600 dark:text-slate-400 mb-1">Odds</div>
+                                <div className="grid grid-cols-3 gap-1 text-center">
+                                  <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
+                                    <div className="text-slate-500 text-xs">H</div>
+                                    <div className="font-semibold text-xs">{pick.homeOdds}</div>
+                                  </div>
+                                  <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
+                                    <div className="text-slate-500 text-xs">D</div>
+                                    <div className="font-semibold text-xs">{pick.drawOdds}</div>
+                                  </div>
+                                  <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
+                                    <div className="text-slate-500 text-xs">A</div>
+                                    <div className="font-semibold text-xs">{pick.awayOdds}</div>
+                                  </div>
+                                </div>
                               </div>
                             </div>
 
@@ -437,7 +469,7 @@ export function HapDailyDashboard() {
               <h3 className="font-semibold text-slate-900 dark:text-white mb-2">How It Works</h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
                 Our AI analyzes live odds from multiple bookmakers, team standings, recent form, and statistical models
-                to identify the most confident home win predictions. Only matches with ≥40% probability are selected (testing mode).
+                to identify the most confident win predictions. Only matches with ≥80% home or away win probability are selected.
               </p>
               <div className="flex flex-wrap justify-center gap-4 mt-4 text-xs text-slate-500 dark:text-slate-400">
                 <span>• Data from Football-Data.org</span>

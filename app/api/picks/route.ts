@@ -8,6 +8,9 @@ export interface Pick {
   league: string
   kickoffTime: string
   homeProbability: number
+  awayProbability: number
+  predictedOutcome: 'HOME' | 'AWAY'
+  winProbability: number
   homeOdds: number
   awayOdds: number
   drawOdds: number
@@ -35,6 +38,9 @@ export async function GET() {
         league: pick.league,
         kickoffTime: pick.kickoffTime,
         homeProbability: pick.homeProbability,
+        awayProbability: pick.awayProbability,
+        predictedOutcome: pick.predictedOutcome,
+        winProbability: pick.winProbability,
         homeOdds: pick.homeOdds,
         awayOdds: pick.awayOdds,
         drawOdds: pick.drawOdds,
@@ -52,7 +58,7 @@ export async function GET() {
           totalFixtures: predictionResult.stats.totalFixtures,
           qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
           averageProbability: formattedPicks.length > 0
-            ? formattedPicks.reduce((sum, pick) => sum + pick.homeProbability, 0) / formattedPicks.length
+            ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
             : 0
         },
         lastUpdated: new Date().toISOString()
@@ -97,6 +103,9 @@ export async function GET() {
         league: pick.league,
         kickoffTime: pick.kickoffTime,
         homeProbability: pick.homeProbability,
+        awayProbability: pick.awayProbability,
+        predictedOutcome: pick.predictedOutcome,
+        winProbability: pick.winProbability,
         homeOdds: pick.homeOdds,
         awayOdds: pick.awayOdds,
         drawOdds: pick.drawOdds,
@@ -114,7 +123,7 @@ export async function GET() {
           totalFixtures: predictionResult.stats.totalFixtures,
           qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
           averageProbability: formattedPicks.length > 0
-            ? formattedPicks.reduce((sum, pick) => sum + pick.homeProbability, 0) / formattedPicks.length
+            ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
             : 0
         },
         lastUpdated: new Date().toISOString(),
@@ -135,6 +144,9 @@ export async function GET() {
         league: pick.league,
         kickoffTime: pick.kickoffTime,
         homeProbability: pick.homeProbability,
+        awayProbability: pick.awayProbability,
+        predictedOutcome: pick.predictedOutcome,
+        winProbability: pick.winProbability,
         homeOdds: pick.homeOdds,
         awayOdds: pick.awayOdds,
         drawOdds: pick.drawOdds,
@@ -152,7 +164,7 @@ export async function GET() {
           totalFixtures: predictionResult.stats.totalFixtures,
           qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
           averageProbability: formattedPicks.length > 0
-            ? formattedPicks.reduce((sum, pick) => sum + pick.homeProbability, 0) / formattedPicks.length
+            ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
             : 0
         },
         lastUpdated: new Date().toISOString(),
@@ -161,21 +173,31 @@ export async function GET() {
     }
 
     // Transform to frontend format
-    const formattedPicks: Pick[] = picks.map((pick: any) => ({
-      id: pick.external_id,
-      homeTeam: pick.home_team,
-      awayTeam: pick.away_team,
-      league: pick.league,
-      kickoffTime: pick.kickoff_time,
-      homeProbability: parseFloat(pick.home_probability),
-      homeOdds: parseFloat(pick.home_odds),
-      awayOdds: parseFloat(pick.away_odds),
-      drawOdds: parseFloat(pick.draw_odds),
-      standingsGap: parseInt(pick.standings_gap) || 0,
-      homeForm: pick.home_form || 'NNNNN',
-      awayForm: pick.away_form || 'NNNNN',
-      confidence: pick.confidence_level as "High" | "Very High" | "Extreme"
-    }))
+    const formattedPicks: Pick[] = picks.map((pick: any) => {
+      const homeProbability = parseFloat(pick.home_probability)
+      const awayProbability = parseFloat(pick.away_probability) || (1 - homeProbability - 0.25) // Estimate if missing
+      const winProbability = Math.max(homeProbability, awayProbability)
+      const predictedOutcome = homeProbability >= awayProbability ? 'HOME' : 'AWAY'
+
+      return {
+        id: pick.external_id,
+        homeTeam: pick.home_team,
+        awayTeam: pick.away_team,
+        league: pick.league,
+        kickoffTime: pick.kickoff_time,
+        homeProbability,
+        awayProbability,
+        predictedOutcome: predictedOutcome as 'HOME' | 'AWAY',
+        winProbability,
+        homeOdds: parseFloat(pick.home_odds),
+        awayOdds: parseFloat(pick.away_odds),
+        drawOdds: parseFloat(pick.draw_odds),
+        standingsGap: parseInt(pick.standings_gap) || 0,
+        homeForm: pick.home_form || 'NNNNN',
+        awayForm: pick.away_form || 'NNNNN',
+        confidence: pick.confidence_level as "High" | "Very High" | "Extreme"
+      }
+    })
 
     // Get additional stats
     const statsQuery = await query(`
@@ -196,7 +218,9 @@ export async function GET() {
         totalPicks: formattedPicks.length,
         totalFixtures: parseInt(stats.total_fixtures) || 0,
         qualifyingFixtures: parseInt(stats.qualifying_fixtures) || 0,
-        averageProbability: parseFloat(stats.avg_probability) || 0
+        averageProbability: formattedPicks.length > 0
+          ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
+          : 0
       },
       lastUpdated: new Date().toISOString()
     })
