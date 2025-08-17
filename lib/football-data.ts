@@ -68,20 +68,20 @@ const headers = {
   'Content-Type': 'application/json'
 }
 
-// Major European leagues that are likely to have good odds coverage
-// Based on your Postman result: "ELC,PL,PPL,FL1,DED,PD,BSA"
-const SUPPORTED_COMPETITIONS = [
-  'PL',  // Premier League
-  'ELC', // Championship (English League Championship)
-  'PD',  // La Liga
+// All competitions available in your FREE tier (12 total)
+const YOUR_AVAILABLE_COMPETITIONS = [
+  'WC',  // FIFA World Cup
+  'CL',  // UEFA Champions League
   'BL1', // Bundesliga
-  'SA',  // Serie A
-  'FL1', // Ligue 1
   'DED', // Eredivisie
+  'BSA', // Campeonato Brasileiro Série A
+  'PD',  // Primera División (La Liga)
+  'FL1', // Ligue 1
+  'ELC', // Championship
   'PPL', // Primeira Liga
-  'BSA', // Brazilian Serie A
-  'CL',  // Champions League
-  'EL'   // Europa League
+  'EC',  // European Championship
+  'SA',  // Serie A
+  'PL'   // Premier League
 ]
 
 export async function getTodaysFixtures(): Promise<FootballDataFixture[]> {
@@ -119,28 +119,34 @@ export async function getTodaysFixtures(): Promise<FootballDataFixture[]> {
 
     // Log all competition codes found
     const foundCompetitions = [...new Set(data.matches.map(match => match.competition.code))]
-    console.log(`Competition codes found today: ${foundCompetitions.join(', ')}`)
-    console.log(`Supported competitions: ${SUPPORTED_COMPETITIONS.join(', ')}`)
+    console.log(`Competition codes found: ${foundCompetitions.join(', ')}`)
+    console.log(`Your available competitions: ${YOUR_AVAILABLE_COMPETITIONS.join(', ')}`)
 
     // Log all match statuses
     const foundStatuses = [...new Set(data.matches.map(match => match.status))]
     console.log(`Match statuses found: ${foundStatuses.join(', ')}`)
 
-    // Filter for supported competitions and scheduled matches
-    const filteredMatches = data.matches.filter(match =>
-      SUPPORTED_COMPETITIONS.includes(match.competition.code) &&
+    // Filter for your available competitions and upcoming matches
+    const availableMatches = data.matches.filter(match =>
+      YOUR_AVAILABLE_COMPETITIONS.includes(match.competition.code) &&
       (match.status === 'SCHEDULED' || match.status === 'TIMED')
     )
 
-    console.log(`Found ${filteredMatches.length} matches in supported leagues for today`)
+    console.log(`Found ${availableMatches.length} upcoming matches from your ${YOUR_AVAILABLE_COMPETITIONS.length} available competitions`)
 
-    // If no matches in supported leagues, return all matches for debugging
-    if (filteredMatches.length === 0) {
-      console.log(`No matches in supported leagues, returning all ${data.matches.length} matches for debugging`)
-      return data.matches
+    // Sort by kickoff time
+    availableMatches.sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime())
+
+    // Log which of your competitions have matches today
+    const activeCompetitions = [...new Set(availableMatches.map(match => match.competition.code))]
+    const inactiveCompetitions = YOUR_AVAILABLE_COMPETITIONS.filter(comp => !activeCompetitions.includes(comp))
+
+    console.log(`🏆 Active competitions today (${activeCompetitions.length}): ${activeCompetitions.join(', ')}`)
+    if (inactiveCompetitions.length > 0) {
+      console.log(`😴 No matches today from: ${inactiveCompetitions.join(', ')}`)
     }
 
-    return filteredMatches
+    return availableMatches
 
   } catch (error) {
     console.error('Error fetching today\'s fixtures:', error)

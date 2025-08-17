@@ -46,15 +46,19 @@ export async function GET() {
     console.log("Raw API returned:", {
       totalMatches: data.matches?.length || 0,
       statuses: [...new Set(data.matches?.map((m: any) => m.status) || [])],
-      competitions: [...new Set(data.matches?.map((m: any) => m.competition.code) || [])]
+      competitions: [...new Set(data.matches?.map((m: any) => m.competition.code) || [])],
+      competitionCount: [...new Set(data.matches?.map((m: any) => m.competition.code) || [])].length
     })
 
-    // Filter out finished matches and format for our dashboard
+    // Filter out finished matches (keep ALL competitions since you have access to 183!)
     const upcomingMatches = data.matches.filter((match: any) =>
       match.status === 'SCHEDULED' || match.status === 'TIMED'
     )
 
-    console.log("Filtered to upcoming matches:", upcomingMatches.length)
+    console.log(`Filtered to ${upcomingMatches.length} upcoming matches from ${[...new Set(upcomingMatches.map((m: any) => m.competition.code))].length} competitions`)
+
+    // Sort by kickoff time
+    upcomingMatches.sort((a: any, b: any) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime())
 
     const fixtures = upcomingMatches.map((match: any) => ({
       id: match.id.toString(),
