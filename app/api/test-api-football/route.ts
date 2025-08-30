@@ -34,9 +34,13 @@ export async function GET() {
     console.log("Step 3: Fetching odds for a sample fixture...")
     let sampleFixtureWithOdds = null
     
-    if (leagueOneFixtures.length > 0) {
-      const sampleFixture = leagueOneFixtures[0]
-      console.log(`Sample fixture: ${sampleFixture.teams.home.name} vs ${sampleFixture.teams.away.name}`)
+    // Try to use a League One fixture first, but fallback to any available fixture
+    const sampleFixture = leagueOneFixtures.length > 0 
+      ? leagueOneFixtures[0] 
+      : (allFixtures.length > 0 ? allFixtures[0] : null)
+    
+    if (sampleFixture) {
+      console.log(`Sample fixture: ${sampleFixture.teams.home.name} vs ${sampleFixture.teams.away.name} (${sampleFixture.league.name})`)
       
       const fixtureId = sampleFixture.fixture.id
       const odds = await getOddsForFixture(fixtureId)
@@ -54,8 +58,34 @@ export async function GET() {
           },
           odds: normalizedOdds
         }
+      } else {
+        console.log(`No odds found for fixture ID: ${fixtureId}`)
+        sampleFixtureWithOdds = {
+          fixture: {
+            id: sampleFixture.fixture.id,
+            date: sampleFixture.fixture.date,
+            homeTeam: sampleFixture.teams.home.name,
+            awayTeam: sampleFixture.teams.away.name,
+            league: sampleFixture.league.name
+          },
+          odds: null
+        }
       }
+    } else {
+      console.log("No fixtures available to test odds")
     }
+    
+    // Get a sample of available fixtures (up to 5) for debugging
+    const otherFixturesSample = allFixtures
+      .slice(0, 5)
+      .map(fixture => ({
+        id: fixture.fixture.id,
+        date: fixture.fixture.date,
+        homeTeam: fixture.teams.home.name,
+        awayTeam: fixture.teams.away.name,
+        league: fixture.league.name,
+        country: fixture.league.country
+      }))
     
     // Return the results
     return NextResponse.json({
@@ -64,6 +94,12 @@ export async function GET() {
       results: {
         allFixturesCount: allFixtures.length,
         leagueOneFixturesCount: leagueOneFixtures.length,
+        apiStatus: {
+          connected: true,
+          apiKeyValid: true,
+          fixturesAvailable: allFixtures.length > 0
+        },
+        availableLeagues: [...new Set(allFixtures.map(f => f.league.name))],
         leagueOneFixtures: leagueOneFixtures.map(fixture => ({
           id: fixture.fixture.id,
           date: fixture.fixture.date,
@@ -71,6 +107,7 @@ export async function GET() {
           awayTeam: fixture.teams.away.name,
           league: fixture.league.name
         })),
+        otherFixturesSample,
         sampleFixtureWithOdds
       }
     })

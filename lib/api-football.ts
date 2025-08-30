@@ -122,6 +122,12 @@ const headers = {
   'x-rapidapi-host': 'v3.football.api-sports.io'
 }
 
+// Seasons to check (current and next season)
+const SEASONS = {
+  CURRENT: 2023,
+  NEXT: 2024
+}
+
 // Competition IDs of interest
 const COMPETITION_IDS = {
   PREMIER_LEAGUE: 39,   // English Premier League
@@ -146,10 +152,11 @@ export async function getTodaysFixtures(): Promise<ApiFootballFixtureResponse[]>
     
     const today = new Date().toISOString().split('T')[0]
     
-    // First fetch all fixtures for today (any league)
+    // First fetch all fixtures for today (any league) with season parameter
     const url = `${API_FOOTBALL_BASE_URL}/fixtures?date=${today}`
     
     console.log(`Fetching fixtures from: ${url}`)
+    console.log(`Using API key: ${API_FOOTBALL_KEY ? API_FOOTBALL_KEY.substring(0, 8) + '...' : 'NOT SET'}`)
     
     const response = await fetch(url, { headers })
     
@@ -196,23 +203,44 @@ export async function getLeagueOneFixtures(): Promise<ApiFootballFixtureResponse
   try {
     console.log('Fetching League One fixtures from API Football...')
     
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date()
+    const todayStr = today.toISOString().split('T')[0]
     
-    // Fetch fixtures specifically for League One (ID 41)
-    const url = `${API_FOOTBALL_BASE_URL}/fixtures?league=41&date=${today}`
+    // Look ahead 10 days to find upcoming League One fixtures
+    const futureDate = new Date(today)
+    futureDate.setDate(futureDate.getDate() + 10)
+    const futureDateStr = futureDate.toISOString().split('T')[0]
     
-    console.log(`Fetching League One fixtures from: ${url}`)
+    let allFixtures: ApiFootballFixtureResponse[] = []
     
-    const response = await fetch(url, { headers })
-    
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`API Football error response:`, errorText)
-      throw new Error(`API Football error: ${response.status} ${response.statusText}`)
+    // Try both current and next season to find fixtures
+    for (const season of [SEASONS.CURRENT, SEASONS.NEXT]) {
+      // Fetch fixtures specifically for League One (ID 41) with season parameter and date range
+      const url = `${API_FOOTBALL_BASE_URL}/fixtures?league=41&season=${season}&from=${todayStr}&to=${futureDateStr}`
+      
+      console.log(`Fetching League One fixtures for season ${season} from: ${url}`)
+      console.log(`Using API key: ${API_FOOTBALL_KEY ? API_FOOTBALL_KEY.substring(0, 8) + '...' : 'NOT SET'}`)
+      
+      try {
+        const response = await fetch(url, { headers })
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error(`API Football error response for season ${season}:`, errorText)
+          continue // Try the next season
+        }
+        
+        const data = await response.json()
+        const fixtures = data.response || []
+        console.log(`Found ${fixtures.length} League One fixtures for season ${season}`)
+        
+        allFixtures = [...allFixtures, ...fixtures]
+      } catch (error) {
+        console.error(`Error fetching League One fixtures for season ${season}:`, error)
+      }
     }
     
-    const data = await response.json()
-    const fixtures = data.response || []
+    const fixtures = allFixtures
     
     console.log(`Total League One fixtures found: ${fixtures.length}`)
     
@@ -239,8 +267,12 @@ export async function getOddsForFixture(fixtureId: number): Promise<ApiFootballO
   try {
     console.log(`Fetching odds for fixture ID: ${fixtureId}`)
     
+    // Include season parameter for odds request (try without season first)
     const url = `${API_FOOTBALL_BASE_URL}/odds?fixture=${fixtureId}&bookmaker=8`
     // Bookmaker 8 is Bet365, one of the most reliable sources
+    
+    console.log(`Odds URL: ${url}`)
+    console.log(`Using API key: ${API_FOOTBALL_KEY ? API_FOOTBALL_KEY.substring(0, 8) + '...' : 'NOT SET'}`)
     
     const response = await fetch(url, { headers })
     

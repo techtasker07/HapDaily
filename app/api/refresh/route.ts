@@ -40,12 +40,14 @@ export async function GET() {
       selectedPicks: predictionResult.stats.selectedPicks
     })
 
-    // If no database connection, return the results directly
-    if (!process.env.DB_EXTERNAL_URL) {
-      console.log("No database configured, returning API results directly")
+    // If no database connection or if we're in development mode, return the results directly
+    const skipDatabase = !process.env.DB_EXTERNAL_URL || process.env.NODE_ENV === 'development' || process.env.SKIP_DB === 'true'
+    
+    if (skipDatabase) {
+      console.log("Skipping database operations, returning API results directly")
       return NextResponse.json({
         success: true,
-        message: "Predictions generated successfully (no database)",
+        message: "Predictions generated successfully (database operations skipped)",
         timestamp: new Date().toISOString(),
         stats: predictionResult.stats,
         picks: predictionResult.selectedPicks.map(pick => ({
@@ -61,75 +63,97 @@ export async function GET() {
       })
     }
 
-    // Step 2: Clear today's existing data
-    console.log("Clearing existing data for today...")
-    await query("DELETE FROM daily_picks WHERE pick_date = $1", [today])
-    await query("DELETE FROM fixtures WHERE DATE(kickoff_time) = $1", [today])
+    try {
+      // Step 2: Clear today's existing data
+      console.log("Clearing existing data for today...")
+      await query("DELETE FROM daily_picks WHERE pick_date = $1", [today])
+      await query("DELETE FROM fixtures WHERE DATE(kickoff_time) = $1", [today])
 
-    // Step 3: Store all processed fixtures
-    console.log(`Storing ${predictionResult.fixtures.length} fixtures...`)
-    for (const fixture of predictionResult.fixtures) {
-      if (!validatePredictionData(fixture)) {
-        console.warn(`Skipping invalid fixture: ${fixture.homeTeam} vs ${fixture.awayTeam}`)
-        continue
+      // Step 3: Store all processed fixtures
+      console.log(`Storing ${predictionResult.fixtures.length} fixtures...`)
+      for (const fixture of predictionResult.fixtures) {
+        if (!validatePredictionData(fixture)) {
+          console.warn(`Skipping invalid fixture: ${fixture.homeTeam} vs ${fixture.awayTeam}`)
+          continue
+        }
+
+        await query(`
+          INSERT INTO fixtures (
+            external_id, home_team, away_team, league, kickoff_time,
+            home_odds, draw_odds, away_odds, home_probability,
+            standings_gap, home_form, away_form
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          ON CONFLICT (external_id) DO UPDATE SET
+            home_odds = EXCLUDED.home_odds,
+            draw_odds = EXCLUDED.draw_odds,
+            away_odds = EXCLUDED.away_odds,
+            home_probability = EXCLUDED.home_probability,
+            standings_gap = EXCLUDED.standings_gap,
+            home_form = EXCLUDED.home_form,
+            away_form = EXCLUDED.away_form,
+            updated_at = NOW()
+        `, [
+          fixture.externalId,
+          fixture.homeTeam,
+          fixture.awayTeam,
+          fixture.league,
+          fixture.kickoffTime,
+          fixture.homeOdds,
+          fixture.drawOdds,
+          fixture.awayOdds,
+          fixture.homeProbability,
+          fixture.standingsGap,
+          fixture.homeForm,
+          fixture.awayForm
+        ])
       }
 
-      await query(`
-        INSERT INTO fixtures (
-          external_id, home_team, away_team, league, kickoff_time,
-          home_odds, draw_odds, away_odds, home_probability,
-          standings_gap, home_form, away_form
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        ON CONFLICT (external_id) DO UPDATE SET
-          home_odds = EXCLUDED.home_odds,
-          draw_odds = EXCLUDED.draw_odds,
-          away_odds = EXCLUDED.away_odds,
-          home_probability = EXCLUDED.home_probability,
-          standings_gap = EXCLUDED.standings_gap,
-          home_form = EXCLUDED.home_form,
-          away_form = EXCLUDED.away_form,
-          updated_at = NOW()
-      `, [
-        fixture.externalId,
-        fixture.homeTeam,
-        fixture.awayTeam,
-        fixture.league,
-        fixture.kickoffTime,
-        fixture.homeOdds,
-        fixture.drawOdds,
-        fixture.awayOdds,
-        fixture.homeProbability,
-        fixture.standingsGap,
-        fixture.homeForm,
-        fixture.awayForm
-      ])
-    }
+      // Step 4: Store selected picks
+      console.log(`Storing ${predictionResult.selectedPicks.length} daily picks...`)
+      for (let i = 0; i < predictionResult.selectedPicks.length; i++) {
+        const pick = predictionResult.selectedPicks[i]
 
-    // Step 4: Store selected picks
-    console.log(`Storing ${predictionResult.selectedPicks.length} daily picks...`)
-    for (let i = 0; i < predictionResult.selectedPicks.length; i++) {
-      const pick = predictionResult.selectedPicks[i]
+        // Get the fixture ID from database
+        const fixtureResult = await query(
+          "SELECT id FROM fixtures WHERE external_id = $1",
+          [pick.externalId]
+        )
 
-      // Get the fixture ID from database
-      const fixtureResult = await query(
-        "SELECT id FROM fixtures WHERE external_id = $1",
-        [pick.externalId]
-      )
+        if (fixtureResult.length === 0) {
+          console.warn(`Fixture not found for pick: ${pick.homeTeam} vs ${pick.awayTeam}`)
+          continue
+        }
 
-      if (fixtureResult.length === 0) {
-        console.warn(`Fixture not found for pick: ${pick.homeTeam} vs ${pick.awayTeam}`)
-        continue
+        await query(`
+          INSERT INTO daily_picks (fixture_id, pick_date, confidence_level, rank_order)
+          VALUES ($1, $2, $3, $4)
+        `, [
+          fixtureResult[0].id,
+          today,
+          pick.confidence,
+          i + 1
+        ])
       }
-
-      await query(`
-        INSERT INTO daily_picks (fixture_id, pick_date, confidence_level, rank_order)
-        VALUES ($1, $2, $3, $4)
-      `, [
-        fixtureResult[0].id,
-        today,
-        pick.confidence,
-        i + 1
-      ])
+    } catch (dbError) {
+      console.error("Database operation failed:", dbError)
+      // Return the predictions anyway, but note the database error
+      return NextResponse.json({
+        success: true,
+        message: "Predictions generated successfully but database operations failed",
+        dbError: dbError instanceof Error ? dbError.message : "Unknown database error",
+        timestamp: new Date().toISOString(),
+        stats: predictionResult.stats,
+        picks: predictionResult.selectedPicks.map(pick => ({
+          homeTeam: pick.homeTeam,
+          awayTeam: pick.awayTeam,
+          league: pick.league,
+          predictedOutcome: pick.predictedOutcome,
+          winProbability: Math.round(pick.winProbability * 100),
+          homeProbability: Math.round(pick.homeProbability * 100),
+          awayProbability: Math.round(pick.awayProbability * 100),
+          confidence: pick.confidence
+        }))
+      })
     }
 
     const response = {
