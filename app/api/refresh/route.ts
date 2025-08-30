@@ -1,22 +1,37 @@
 import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
-import { generateDailyPredictions, validatePredictionData } from "@/lib/prediction-engine"
+import { generateDailyPredictions as generateOriginalPredictions, validatePredictionData } from "@/lib/prediction-engine"
+import { generateDailyPredictions as generateApiFootballPredictions } from "@/lib/prediction-engine-api-football"
 
 // This is called by Vercel Cron Jobs or manually
 export async function GET() {
   try {
-    console.log("Starting daily picks refresh...")
+    console.log("Starting daily picks refresh with API Football integration...")
     console.log("Environment check:", {
       hasFootballDataToken: !!process.env.FOOTBALL_DATA_TOKEN,
-      hasOddsApiKey: !!process.env.ODDS_API_KEY,
+      hasApiFootballKey: !!process.env.API_FOOTBALL_KEY,
+      hasRapidApiKey: !!process.env.RAPIDAPI_KEY,
       hasDbUrl: !!process.env.DB_EXTERNAL_URL
     })
 
     const today = new Date().toISOString().split("T")[0]
 
-    // Step 1: Generate predictions using real APIs
-    console.log("Generating predictions from APIs...")
-    const predictionResult = await generateDailyPredictions()
+    // Step 1: Generate predictions using the new API Football integration
+    console.log("Generating predictions using API Football...")
+    let predictionResult
+
+    try {
+      // Try the new API Football prediction engine first
+      predictionResult = await generateApiFootballPredictions()
+      console.log("Successfully generated predictions with API Football")
+    } catch (error) {
+      console.error("Error using API Football prediction engine:", error)
+      
+      // Fall back to the original prediction engine if the API Football one fails
+      console.log("Falling back to original prediction engine...")
+      predictionResult = await generateOriginalPredictions()
+      console.log("Successfully generated predictions with original engine")
+    }
 
     console.log("Prediction results:", {
       totalFixtures: predictionResult.stats.totalFixtures,
