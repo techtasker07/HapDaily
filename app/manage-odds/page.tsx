@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
@@ -18,6 +19,18 @@ interface Fixture {
   homeOdds: number | null
   drawOdds: number | null
   awayOdds: number | null
+}
+
+interface JsonFixture {
+  home: string
+  away: string
+  competition: string
+  time?: string
+  odds: {
+    home_win: number | null
+    draw: number | null
+    away_win: number | null
+  }
 }
 
 interface Prediction {
@@ -69,13 +82,105 @@ export default function ManageOddsPage() {
     fetchFixtures()
   }, [])
 
+  const [jsonInput, setJsonInput] = useState<string>('')
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
   // Update a fixture's odds
   const updateOdds = (id: number, field: 'homeOdds' | 'drawOdds' | 'awayOdds', value: string) => {
-    setFixtures(fixtures.map(fixture => 
-      fixture.id === id 
-        ? { ...fixture, [field]: value ? parseFloat(value) : null } 
-        : fixture
-    ))
+    setFixtures(prevFixtures => 
+      prevFixtures.map(fixture => 
+        fixture.id === id 
+          ? { ...fixture, [field]: value ? parseFloat(value) : null } 
+          : fixture
+      )
+    )
+  }
+
+  // Handle JSON import
+  const handleJsonImport = () => {
+    try {
+      setJsonError(null)
+      
+      // Parse the JSON input
+      let jsonFixtures: JsonFixture[]
+      try {
+        jsonFixtures = JSON.parse(jsonInput)
+      } catch (e) {
+        setJsonError("Invalid JSON format. Please check your input.")
+        return
+      }
+      
+      // Validate the structure
+      if (!Array.isArray(jsonFixtures)) {
+        setJsonError("Input must be an array of fixtures")
+        return
+      }
+      
+      // Make a copy of the current fixtures
+      const updatedFixtures = [...fixtures]
+      let matchCount = 0
+      
+      // For each JSON fixture, try to find a match in our fixtures
+      jsonFixtures.forEach(jsonFixture => {
+        // Validate the structure
+        if (!jsonFixture.home || !jsonFixture.away || !jsonFixture.odds) {
+          console.warn("Skipping invalid fixture entry:", jsonFixture)
+          return
+        }
+        
+        // Helper function to normalize team names for better matching
+        const normalizeTeamName = (name: string): string => {
+          return name
+            .toLowerCase()
+            .replace(/fc$|f\.c\.$|football club$/i, '')  // Remove FC, F.C., Football Club
+            .replace(/united$|utd$/i, 'utd')              // Standardize United/Utd
+            .replace(/city$/i, '')                        // Remove City
+            .replace(/\s+/g, '')                          // Remove all spaces
+            .trim()
+        }
+        
+        // Try to find a matching fixture
+        const normalizedJsonHome = normalizeTeamName(jsonFixture.home)
+        const normalizedJsonAway = normalizeTeamName(jsonFixture.away)
+        
+        const matchingFixture = updatedFixtures.find(fixture => {
+          const normalizedFixtureHome = normalizeTeamName(fixture.homeTeam)
+          const normalizedFixtureAway = normalizeTeamName(fixture.awayTeam)
+          
+          // Check for exact match after normalization
+          const exactMatch = 
+            normalizedFixtureHome === normalizedJsonHome && 
+            normalizedFixtureAway === normalizedJsonAway
+          
+          // Check for partial match if exact match fails
+          const partialMatch = 
+            (normalizedFixtureHome.includes(normalizedJsonHome) || 
+             normalizedJsonHome.includes(normalizedFixtureHome)) && 
+            (normalizedFixtureAway.includes(normalizedJsonAway) || 
+             normalizedJsonAway.includes(normalizedFixtureAway))
+          
+          return exactMatch || partialMatch
+        })
+        
+        if (matchingFixture) {
+          // Update odds for the matching fixture
+          matchingFixture.homeOdds = jsonFixture.odds.home_win
+          matchingFixture.drawOdds = jsonFixture.odds.draw
+          matchingFixture.awayOdds = jsonFixture.odds.away_win
+          matchCount++
+        } else {
+          console.warn(`No match found for ${jsonFixture.home} vs ${jsonFixture.away}`)
+        }
+      })
+      
+      // Update state with the modified fixtures
+      setFixtures(updatedFixtures)
+      setSuccessMessage(`Successfully matched and updated odds for ${matchCount} fixtures`)
+      
+    } catch (error) {
+      setJsonError("Error processing JSON input: " + (error instanceof Error ? error.message : String(error)))
+      console.error("JSON import error:", error)
+    }
   }
 
   // Save odds for all fixtures
@@ -177,11 +282,76 @@ export default function ManageOddsPage() {
         </Alert>
       )}
       
-      <Tabs defaultValue="fixtures">
+      <Tabs defaultValue="json-import">
         <TabsList className="mb-4">
-          <TabsTrigger value="fixtures">Enter Odds</TabsTrigger>
+          <TabsTrigger value="json-import">JSON Import</TabsTrigger>
+          <TabsTrigger value="fixtures">Manual Entry</TabsTrigger>
           <TabsTrigger value="predictions">View Predictions</TabsTrigger>
         </TabsList>
+        
+        <TabsContent value="json-import">
+          <Card>
+            <CardHeader>
+              <CardTitle>Import Odds Data from JSON</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <p className="text-sm text-gray-500 mb-2">
+                  Paste JSON data in the format shown below. The system will match teams by name and update the odds.
+                </p>
+                <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto mb-4">
+{`[
+  {
+    "home": "Chelsea FC",
+    "away": "Fulham FC",
+    "competition": "Premier League",
+    "odds": {
+      "home_win": 1.65,
+      "draw": 3.50,
+      "away_win": 5.25
+    }
+  },
+  // more fixtures...
+]`}
+                </pre>
+                
+                <Textarea 
+                  value={jsonInput}
+                  onChange={(e) => setJsonInput(e.target.value)}
+                  placeholder="Paste JSON data here..."
+                  className="min-h-[200px] font-mono"
+                />
+                
+                {jsonError && (
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertDescription>{jsonError}</AlertDescription>
+                  </Alert>
+                )}
+                
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button onClick={handleJsonImport}>
+                    Validate & Import
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setJsonInput('')}
+                  >
+                    Clear
+                  </Button>
+                  <Button 
+                    onClick={async () => {
+                      await saveOdds()
+                      await generatePredictions()
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 ml-auto"
+                  >
+                    Save & Generate Predictions
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
         
         <TabsContent value="fixtures">
           <Card>
