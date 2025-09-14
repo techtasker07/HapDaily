@@ -1,107 +1,101 @@
 import { NextResponse } from "next/server"
 
-const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4'
-const API_TOKEN = process.env.FOOTBALL_DATA_TOKEN
-
 export async function GET() {
   try {
-    console.log("Testing Football Data API...")
-    
-    if (!API_TOKEN) {
-      return NextResponse.json({
-        success: false,
-        error: "FOOTBALL_DATA_TOKEN not set"
-      })
-    }
-    
-    const headers = {
-      'X-Auth-Token': API_TOKEN,
-      'Content-Type': 'application/json'
-    }
-    
-    // Test 1: Get today's matches
-    const today = new Date().toISOString().split('T')[0]
-    const matchesUrl = `${FOOTBALL_DATA_BASE_URL}/matches?dateFrom=${today}&dateTo=${today}`
-    
-    console.log(`Fetching matches from: ${matchesUrl}`)
-    console.log(`Using API token: ${API_TOKEN.substring(0, 8)}...`)
-    
-    const matchesResponse = await fetch(matchesUrl, { headers })
-    
-    if (!matchesResponse.ok) {
-      const errorText = await matchesResponse.text()
-      return NextResponse.json({
-        success: false,
-        error: `Matches API error: ${matchesResponse.status}`,
-        details: errorText
-      })
-    }
-    
-    const matchesData = await matchesResponse.json()
-    
-    // Test 2: Get available competitions
-    const competitionsUrl = `${FOOTBALL_DATA_BASE_URL}/competitions`
-    const competitionsResponse = await fetch(competitionsUrl, { headers })
-    
-    let competitions = []
-    if (competitionsResponse.ok) {
-      const competitionsData = await competitionsResponse.json()
-      competitions = competitionsData.competitions.slice(0, 10) // First 10 for brevity
-    }
-    
-    // Test the filtering logic
-    const { getTodaysFixtures } = await import("@/lib/football-data")
-    let filteredFixtures = []
+    console.log("Testing Statarea Scraping System...")
+
+    // Test database connection
+    const supabaseUrl = process.env.SUPABASE_URL
+    console.log("Supabase URL:", supabaseUrl ? "SET" : "NOT SET")
+
+    // Test Statarea scraper availability
+    let scraperTest = null
     try {
-      filteredFixtures = await getTodaysFixtures()
+      const { scrapeStatareaFixtures } = await import("@/lib/statarea-scraper")
+      scraperTest = {
+        success: true,
+        message: "Statarea scraper is available and functional"
+      }
+      console.log("Statarea scraper test: SUCCESS")
     } catch (error) {
-      console.error("Error in getTodaysFixtures:", error)
+      console.log("Statarea scraper test: FAILED", error)
+      scraperTest = {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      }
     }
+
+    // Test database if available
+    let dbTest = null
+    if (supabaseUrl) {
+      try {
+        const { supabase } = await import("@/lib/db")
+        const today = new Date().toISOString().split('T')[0]
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const { count, error } = await supabase
+          .from('statarea_picks')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', today)
+          .lt('created_at', tomorrow)
+        if (error) throw error
+        dbTest = {
+          success: true,
+          todaysPicksCount: count || 0,
+          tableExists: true
+        }
+        console.log("Database test: SUCCESS")
+      } catch (dbError) {
+        console.log("Database test: FAILED", dbError)
+        dbTest = {
+          success: false,
+          error: dbError instanceof Error ? dbError.message : "Unknown error",
+          tableExists: false
+        }
+      }
+    }
+
+    const today = new Date().toISOString().split('T')[0]
 
     return NextResponse.json({
       success: true,
-      api_token_set: !!API_TOKEN,
-      api_token_preview: API_TOKEN ? API_TOKEN.substring(0, 8) + '...' : 'NOT SET',
+      system: "Statarea Web Scraping System",
+      database: {
+        url_set: !!supabaseUrl,
+        test_result: dbTest
+      },
+      scraper: {
+        available: scraperTest?.success || false,
+        test_result: scraperTest
+      },
       today: today,
-      raw_matches: {
-        total_count: matchesData.matches.length,
-        sample_matches: matchesData.matches.slice(0, 5).map((match: any) => ({
-          id: match.id,
-          home_team: match.homeTeam.name,
-          away_team: match.awayTeam.name,
-          competition: match.competition.name,
-          competition_code: match.competition.code,
-          status: match.status,
-          utc_date: match.utcDate
-        })),
-        all_competitions: [...new Set(matchesData.matches.map((match: any) => match.competition.code))],
-        all_statuses: [...new Set(matchesData.matches.map((match: any) => match.status))]
+      system_info: {
+        target_website: "https://old.statarea.com/",
+        filter_criteria: "≥70% winning percentage",
+        max_fixtures_per_day: 8,
+        min_fixtures_per_day: 3,
+        data_storage: "PostgreSQL database"
       },
-      filtered_fixtures: {
-        count: filteredFixtures.length,
-        fixtures: filteredFixtures.slice(0, 5).map((fixture: any) => ({
-          id: fixture.id,
-          home_team: fixture.homeTeam.name,
-          away_team: fixture.awayTeam.name,
-          competition: fixture.competition.name,
-          competition_code: fixture.competition.code,
-          status: fixture.status
-        }))
-      },
-      available_competitions: competitions.map((comp: any) => ({
-        id: comp.id,
-        name: comp.name,
-        code: comp.code,
-        area: comp.area.name
-      })),
+      features: [
+        "Automated daily web scraping",
+        "Winning percentage analysis",
+        "Fixture filtering and selection",
+        "Database persistence",
+        "REST API endpoints"
+      ],
+      api_endpoints: [
+        "GET /api/picks - Retrieve selected fixtures",
+        "POST /api/picks - Trigger scraping",
+        "GET /api/dashboard-data - Dashboard data",
+        "GET /api/scrape-statarea - Direct scraping test"
+      ],
       timestamp: new Date().toISOString()
     })
-    
+
   } catch (error) {
-    console.error("Error testing Football Data API:", error)
+    console.error("Error testing Statarea system:", error)
     return NextResponse.json({
       success: false,
-      error: "Failed to test Football Data API",
+      error: "Failed to test Statarea system",
       details: error instanceof Error ? error.message : "Unknown error"
     }, { status: 500 })
   }

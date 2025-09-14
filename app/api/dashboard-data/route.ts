@@ -1,149 +1,78 @@
 import { NextResponse } from "next/server"
-import { getTodaysFixtures } from "@/lib/football-data"
-import { getAllRapidApiOdds } from "@/lib/rapidapi-odds"
-import { generateDailyPredictions } from "@/lib/prediction-engine"
 
 export async function GET() {
   try {
     console.log("=== DASHBOARD DATA FETCH ===")
-    
-    // Track API status
-    const apiStatus = {
-      footballData: { success: false, error: null as string | null, count: 0 },
-      oddsApi: { success: false, error: null as string | null, count: 0 }
-    }
-    
-    // Fetch fixtures from Football Data API
-    let allFixtures: any[] = []
-    try {
-      console.log("📊 Fetching fixtures from Football Data API...")
-      console.log("Environment check:", {
-        hasToken: !!process.env.FOOTBALL_DATA_TOKEN,
-        tokenPreview: process.env.FOOTBALL_DATA_TOKEN ? process.env.FOOTBALL_DATA_TOKEN.substring(0, 8) + '...' : 'NOT SET'
-      })
 
-      allFixtures = await getTodaysFixtures()
-      apiStatus.footballData.success = true
-      apiStatus.footballData.count = allFixtures.length
-      console.log(`✅ Football Data API: ${allFixtures.length} fixtures found`)
-
-      if (allFixtures.length > 0) {
-        console.log("Sample fixture:", {
-          id: allFixtures[0].id,
-          homeTeam: allFixtures[0].homeTeam.name,
-          awayTeam: allFixtures[0].awayTeam.name,
-          competition: allFixtures[0].competition.name,
-          status: allFixtures[0].status
-        })
-      }
-    } catch (error) {
-      console.error("❌ Football Data API failed:", error)
-      apiStatus.footballData.error = error instanceof Error ? error.message : "Unknown error"
-
-      // Try direct API call for debugging
-      try {
-        console.log("🔍 Attempting direct API call for debugging...")
-        const today = new Date().toISOString().split('T')[0]
-        const url = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${today}`
-        const response = await fetch(url, {
-          headers: {
-            'X-Auth-Token': process.env.FOOTBALL_DATA_TOKEN || '',
-            'Content-Type': 'application/json'
-          }
-        })
-        console.log("Direct API call status:", response.status)
-        if (response.ok) {
-          const directData = await response.json()
-          console.log("Direct API call returned:", directData.matches?.length || 0, "matches")
-        }
-      } catch (directError) {
-        console.error("Direct API call also failed:", directError)
-      }
-    }
-    
-    // Fetch odds from RapidAPI
-    let allOdds: any[] = []
-    try {
-      console.log("💰 Fetching odds from RapidAPI...")
-      allOdds = await getAllRapidApiOdds()
-      apiStatus.oddsApi.success = true
-      apiStatus.oddsApi.count = allOdds.length
-      console.log(`✅ RapidAPI: ${allOdds.length} events found`)
-    } catch (error) {
-      console.error("❌ RapidAPI failed:", error)
-      apiStatus.oddsApi.error = error instanceof Error ? error.message : "Unknown error"
-    }
-    
-    // Generate predictions
-    let predictionResult = null
+    // Try to get data from database
     let picks: any[] = []
-    try {
-      console.log("🎯 Generating predictions...")
-      predictionResult = await generateDailyPredictions()
-      picks = predictionResult.selectedPicks
-      console.log(`✅ Predictions: ${picks.length} picks selected`)
-    } catch (error) {
-      console.error("❌ Prediction generation failed:", error)
-    }
-    
-    // Format fixtures for display
-    const formattedFixtures = allFixtures.map(fixture => ({
-      id: fixture.id.toString(),
-      homeTeam: fixture.homeTeam.name,
-      awayTeam: fixture.awayTeam.name,
-      league: fixture.competition.name,
-      kickoffTime: fixture.utcDate,
-      status: fixture.status,
-      hasOdds: allOdds.some(odds =>
-        odds.home_team.toLowerCase().includes(fixture.homeTeam.name.toLowerCase().split(' ')[0]) ||
-        odds.away_team.toLowerCase().includes(fixture.awayTeam.name.toLowerCase().split(' ')[0])
-      )
-    }))
+    let fixtures: any[] = []
 
-    console.log(`📋 Formatted ${formattedFixtures.length} fixtures for display`)
-    
-    // Format picks for display
-    const formattedPicks = picks.map(pick => ({
-      id: pick.externalId,
-      homeTeam: pick.homeTeam,
-      awayTeam: pick.awayTeam,
-      league: pick.league,
-      kickoffTime: pick.kickoffTime,
-      homeProbability: pick.homeProbability,
-      homeOdds: pick.homeOdds,
-      awayOdds: pick.awayOdds,
-      drawOdds: pick.drawOdds,
-      standingsGap: pick.standingsGap,
-      homeForm: pick.homeForm,
-      awayForm: pick.awayForm,
-      confidence: pick.confidence
-    }))
-    
+    if (process.env.SUPABASE_URL) {
+      try {
+        const { supabase } = await import("@/lib/db")
+        const today = new Date().toISOString().split("T")[0]
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+
+        // Get picks
+        const { data: picksData, error } = await supabase
+          .from('statarea_picks')
+          .select('id, home_team, away_team, league, kickoff_time, home_winning_percentage, away_winning_percentage, selected_team, winning_percentage')
+          .gte('created_at', today)
+          .lt('created_at', tomorrow)
+          .order('winning_percentage', { ascending: false })
+
+        if (error) throw error
+
+        picks = (picksData || []).map((pick: any) => ({
+          id: pick.id.toString(),
+          homeTeam: pick.home_team,
+          awayTeam: pick.away_team,
+          league: pick.league,
+          kickoffTime: pick.kickoff_time,
+          homeWinningPercentage: parseFloat(pick.home_winning_percentage),
+          awayWinningPercentage: parseFloat(pick.away_winning_percentage),
+          selectedTeam: pick.selected_team,
+          winningPercentage: parseFloat(pick.winning_percentage)
+        }))
+
+        console.log(`Found ${picks.length} picks in database`)
+
+      } catch (dbError) {
+        console.log("Database error:", dbError)
+      }
+    }
+
     const stats = {
-      totalPicks: formattedPicks.length,
-      totalFixtures: formattedFixtures.length,
-      qualifyingFixtures: predictionResult?.stats.qualifyingFixtures || 0,
-      averageProbability: formattedPicks.length > 0 
-        ? formattedPicks.reduce((sum, pick) => sum + pick.homeProbability, 0) / formattedPicks.length 
+      totalPicks: picks.length,
+      totalFixtures: fixtures.length,
+      qualifyingFixtures: picks.length,
+      averageWinningPercentage: picks.length > 0
+        ? picks.reduce((sum, pick) => sum + pick.winningPercentage, 0) / picks.length
         : 0
     }
-    
+
     console.log("=== DASHBOARD DATA SUMMARY ===")
     console.log(`📊 Total fixtures: ${stats.totalFixtures}`)
-    console.log(`💰 Odds events: ${apiStatus.oddsApi.count}`)
     console.log(`🎯 Selected picks: ${stats.totalPicks}`)
-    console.log(`✅ Qualifying fixtures: ${stats.qualifyingFixtures}`)
     console.log("=============================")
-    
+
     return NextResponse.json({
       success: true,
-      fixtures: formattedFixtures,
-      picks: formattedPicks,
+      fixtures: fixtures,
+      picks: picks,
       stats,
-      apiStatus,
-      lastUpdated: new Date().toISOString()
+      apiStatus: {
+        statarea: {
+          success: picks.length > 0,
+          error: picks.length === 0 ? "No data scraped yet" : null,
+          count: picks.length
+        }
+      },
+      lastUpdated: new Date().toISOString(),
+      message: picks.length === 0 ? "Click 'Scrape Statarea' to get today's fixtures" : "Data loaded from database"
     })
-    
+
   } catch (error) {
     console.error("Error fetching dashboard data:", error)
     return NextResponse.json({
@@ -152,10 +81,9 @@ export async function GET() {
       details: error instanceof Error ? error.message : "Unknown error",
       fixtures: [],
       picks: [],
-      stats: { totalPicks: 0, totalFixtures: 0, qualifyingFixtures: 0, averageProbability: 0 },
+      stats: { totalPicks: 0, totalFixtures: 0, qualifyingFixtures: 0, averageWinningPercentage: 0 },
       apiStatus: {
-        footballData: { success: false, error: "Failed to fetch" },
-        oddsApi: { success: false, error: "Failed to fetch" }
+        statarea: { success: false, error: "Failed to fetch" }
       }
     }, { status: 500 })
   }

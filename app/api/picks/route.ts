@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
 
 export interface Pick {
   id: string
@@ -7,272 +6,168 @@ export interface Pick {
   awayTeam: string
   league: string
   kickoffTime: string
-  homeProbability: number
-  awayProbability: number
-  predictedOutcome: 'HOME' | 'AWAY'
-  winProbability: number
-  homeOdds: number
-  awayOdds: number
-  drawOdds: number
-  standingsGap: number
-  homeForm: string
-  awayForm: string
-  confidence: "High" | "Very High" | "Extreme"
+  homeWinningPercentage: number
+  awayWinningPercentage: number
+  selectedTeam: 'HOME' | 'AWAY'
+  winningPercentage: number
 }
 
 export async function GET() {
   try {
-    const today = new Date().toISOString().split("T")[0]
+    // Check if Supabase is available and has today's data
+    if (process.env.SUPABASE_URL) {
+      // Try to get today's picks from database
+      const { supabase } = await import("@/lib/db")
+      const today = new Date().toISOString().split("T")[0]
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]
 
-    // Check if database is available
-    if (!process.env.DB_EXTERNAL_URL) {
-      console.log("No database configured, fetching fresh data from APIs...")
-      // Call refresh endpoint to get fresh data
-      const { generateDailyPredictions } = await import("@/lib/prediction-engine")
-      const predictionResult = await generateDailyPredictions()
+      try {
+        const { data: picks, error } = await supabase
+          .from('statarea_picks')
+          .select('id, home_team, away_team, league, kickoff_time, home_winning_percentage, away_winning_percentage, selected_team, winning_percentage')
+          .gte('created_at', today)
+          .lt('created_at', tomorrow)
+          .order('winning_percentage', { ascending: false })
 
-      const formattedPicks: Pick[] = predictionResult.selectedPicks.map((pick, index) => ({
-        id: pick.externalId,
-        homeTeam: pick.homeTeam,
-        awayTeam: pick.awayTeam,
-        league: pick.league,
-        kickoffTime: pick.kickoffTime,
-        homeProbability: pick.homeProbability,
-        awayProbability: pick.awayProbability,
-        predictedOutcome: pick.predictedOutcome,
-        winProbability: pick.winProbability,
-        homeOdds: pick.homeOdds,
-        awayOdds: pick.awayOdds,
-        drawOdds: pick.drawOdds,
-        standingsGap: pick.standingsGap,
-        homeForm: pick.homeForm,
-        awayForm: pick.awayForm,
-        confidence: pick.confidence
-      }))
+        if (error) throw error
 
-      return NextResponse.json({
-        success: true,
-        picks: formattedPicks,
-        stats: {
-          totalPicks: formattedPicks.length,
-          totalFixtures: predictionResult.stats.totalFixtures,
-          qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
-          averageProbability: formattedPicks.length > 0
-            ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
-            : 0
-        },
-        lastUpdated: new Date().toISOString()
-      })
-    }
+        if (picks && picks.length > 0) {
+          const formattedPicks: Pick[] = picks.map((pick: any) => ({
+            id: pick.id.toString(),
+            homeTeam: pick.home_team,
+            awayTeam: pick.away_team,
+            league: pick.league,
+            kickoffTime: pick.kickoff_time,
+            homeWinningPercentage: parseFloat(pick.home_winning_percentage),
+            awayWinningPercentage: parseFloat(pick.away_winning_percentage),
+            selectedTeam: pick.selected_team as 'HOME' | 'AWAY',
+            winningPercentage: parseFloat(pick.winning_percentage)
+          }))
 
-    // Try to get today's picks from database
-    let picks = []
-    try {
-      picks = await query(`
-        SELECT
-          f.id,
-          f.external_id,
-          f.home_team,
-          f.away_team,
-          f.league,
-          f.kickoff_time,
-          f.home_odds,
-          f.draw_odds,
-          f.away_odds,
-          f.home_probability,
-          f.standings_gap,
-          f.home_form,
-          f.away_form,
-          dp.confidence_level,
-          dp.rank_order
-        FROM daily_picks dp
-        JOIN fixtures f ON dp.fixture_id = f.id
-        WHERE dp.pick_date = $1
-        ORDER BY dp.rank_order ASC
-      `, [today])
-    } catch (dbError) {
-      console.log("Database error, falling back to API:", dbError)
-      // Fallback to API if database fails
-      const { generateDailyPredictions } = await import("@/lib/prediction-engine")
-      const predictionResult = await generateDailyPredictions()
-
-      const formattedPicks: Pick[] = predictionResult.selectedPicks.map((pick, index) => ({
-        id: pick.externalId,
-        homeTeam: pick.homeTeam,
-        awayTeam: pick.awayTeam,
-        league: pick.league,
-        kickoffTime: pick.kickoffTime,
-        homeProbability: pick.homeProbability,
-        awayProbability: pick.awayProbability,
-        predictedOutcome: pick.predictedOutcome,
-        winProbability: pick.winProbability,
-        homeOdds: pick.homeOdds,
-        awayOdds: pick.awayOdds,
-        drawOdds: pick.drawOdds,
-        standingsGap: pick.standingsGap,
-        homeForm: pick.homeForm,
-        awayForm: pick.awayForm,
-        confidence: pick.confidence
-      }))
-
-      return NextResponse.json({
-        success: true,
-        picks: formattedPicks,
-        stats: {
-          totalPicks: formattedPicks.length,
-          totalFixtures: predictionResult.stats.totalFixtures,
-          qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
-          averageProbability: formattedPicks.length > 0
-            ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
-            : 0
-        },
-        lastUpdated: new Date().toISOString(),
-        source: "api_fallback"
-      })
-    }
-
-    // If no picks in database, fetch fresh data
-    if (picks.length === 0) {
-      console.log("No picks found in database, fetching fresh data...")
-      const { generateDailyPredictions } = await import("@/lib/prediction-engine")
-      const predictionResult = await generateDailyPredictions()
-
-      const formattedPicks: Pick[] = predictionResult.selectedPicks.map((pick, index) => ({
-        id: pick.externalId,
-        homeTeam: pick.homeTeam,
-        awayTeam: pick.awayTeam,
-        league: pick.league,
-        kickoffTime: pick.kickoffTime,
-        homeProbability: pick.homeProbability,
-        awayProbability: pick.awayProbability,
-        predictedOutcome: pick.predictedOutcome,
-        winProbability: pick.winProbability,
-        homeOdds: pick.homeOdds,
-        awayOdds: pick.awayOdds,
-        drawOdds: pick.drawOdds,
-        standingsGap: pick.standingsGap,
-        homeForm: pick.homeForm,
-        awayForm: pick.awayForm,
-        confidence: pick.confidence
-      }))
-
-      return NextResponse.json({
-        success: true,
-        picks: formattedPicks,
-        stats: {
-          totalPicks: formattedPicks.length,
-          totalFixtures: predictionResult.stats.totalFixtures,
-          qualifyingFixtures: predictionResult.stats.qualifyingFixtures,
-          averageProbability: formattedPicks.length > 0
-            ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
-            : 0
-        },
-        lastUpdated: new Date().toISOString(),
-        source: "fresh_api"
-      })
-    }
-
-    // Transform to frontend format
-    const formattedPicks: Pick[] = picks.map((pick: any) => {
-      const homeProbability = parseFloat(pick.home_probability)
-      const awayProbability = parseFloat(pick.away_probability) || (1 - homeProbability - 0.25) // Estimate if missing
-      const winProbability = Math.max(homeProbability, awayProbability)
-      const predictedOutcome = homeProbability >= awayProbability ? 'HOME' : 'AWAY'
-
-      return {
-        id: pick.external_id,
-        homeTeam: pick.home_team,
-        awayTeam: pick.away_team,
-        league: pick.league,
-        kickoffTime: pick.kickoff_time,
-        homeProbability,
-        awayProbability,
-        predictedOutcome: predictedOutcome as 'HOME' | 'AWAY',
-        winProbability,
-        homeOdds: parseFloat(pick.home_odds),
-        awayOdds: parseFloat(pick.away_odds),
-        drawOdds: parseFloat(pick.draw_odds),
-        standingsGap: parseInt(pick.standings_gap) || 0,
-        homeForm: pick.home_form || 'NNNNN',
-        awayForm: pick.away_form || 'NNNNN',
-        confidence: pick.confidence_level as "High" | "Very High" | "Extreme"
+          return NextResponse.json({
+            success: true,
+            picks: formattedPicks,
+            stats: {
+              totalPicks: formattedPicks.length,
+              totalFixtures: 0, // Will be updated when we implement full tracking
+              qualifyingFixtures: formattedPicks.length,
+              averageWinningPercentage: formattedPicks.length > 0
+                ? formattedPicks.reduce((sum, pick) => sum + pick.winningPercentage, 0) / formattedPicks.length
+                : 0
+            },
+            lastUpdated: new Date().toISOString(),
+            source: "database"
+          })
+        }
+      } catch (dbError) {
+        console.log("Database error:", dbError)
       }
-    })
+    }
 
-    // Get additional stats
-    const statsQuery = await query(`
-      SELECT 
-        COUNT(*) as total_fixtures,
-        COUNT(CASE WHEN home_probability >= 0.80 THEN 1 END) as qualifying_fixtures,
-        AVG(home_probability) as avg_probability
-      FROM fixtures 
-      WHERE DATE(kickoff_time) = $1
-    `, [today])
-
-    const stats = statsQuery[0] || { total_fixtures: 0, qualifying_fixtures: 0, avg_probability: 0 }
-
+    // If no database data, return empty with message
     return NextResponse.json({
       success: true,
-      picks: formattedPicks,
+      picks: [],
       stats: {
-        totalPicks: formattedPicks.length,
-        totalFixtures: parseInt(stats.total_fixtures) || 0,
-        qualifyingFixtures: parseInt(stats.qualifying_fixtures) || 0,
-        averageProbability: formattedPicks.length > 0
-          ? formattedPicks.reduce((sum, pick) => sum + pick.winProbability, 0) / formattedPicks.length
-          : 0
+        totalPicks: 0,
+        totalFixtures: 0,
+        qualifyingFixtures: 0,
+        averageWinningPercentage: 0
       },
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      message: "No picks available. Click 'Scrape Statarea' to get today's fixtures."
     })
 
   } catch (error) {
     console.error("Error fetching picks:", error)
-    return NextResponse.json({ 
-      success: false, 
+    return NextResponse.json({
+      success: false,
       error: "Failed to fetch picks",
       picks: [],
       stats: {
         totalPicks: 0,
         totalFixtures: 0,
         qualifyingFixtures: 0,
-        averageProbability: 0
+        averageWinningPercentage: 0
       }
     }, { status: 500 })
   }
 }
 
-// Optional: Allow manual refresh trigger
+// Trigger scraping and save results
 export async function POST() {
   try {
-    console.log("Manual refresh triggered via POST")
+    console.log("Scraping trigger received - starting Statarea scraping")
 
-    // Instead of calling the refresh endpoint via HTTP, call the function directly
-    const { generateDailyPredictions } = await import("@/lib/prediction-engine")
-    const predictionResult = await generateDailyPredictions()
+    // Import the scraper
+    const { scrapeStatareaFixtures, validateScrapingResult } = await import("@/lib/statarea-scraper")
 
-    // Format the response similar to the refresh endpoint
-    const response = {
-      success: true,
-      message: "Refresh completed successfully",
-      timestamp: new Date().toISOString(),
-      stats: predictionResult.stats,
-      picks: predictionResult.selectedPicks.map(pick => ({
-        homeTeam: pick.homeTeam,
-        awayTeam: pick.awayTeam,
-        league: pick.league,
-        probability: Math.round(pick.homeProbability * 100),
-        confidence: pick.confidence
-      }))
+    // Scrape fixtures
+    const scrapingResult = await scrapeStatareaFixtures()
+
+    // Validate result
+    if (!validateScrapingResult(scrapingResult)) {
+      return NextResponse.json({
+        success: false,
+        error: "Invalid scraping result"
+      }, { status: 500 })
     }
 
-    console.log("Manual refresh completed:", response.stats)
-    return NextResponse.json(response)
+    // Save to database if available
+    if (process.env.SUPABASE_URL && scrapingResult.fixtures.length > 0) {
+      try {
+        const { supabase } = await import("@/lib/db")
+        const today = new Date().toISOString().split("T")[0]
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+
+        // Clear existing picks for today
+        const { error: deleteError } = await supabase
+          .from('statarea_picks')
+          .delete()
+          .gte('created_at', today)
+          .lt('created_at', tomorrow)
+
+        if (deleteError) throw deleteError
+
+        // Insert new picks
+        const picksToInsert = scrapingResult.fixtures.map(fixture => ({
+          id: fixture.id,
+          home_team: fixture.homeTeam,
+          away_team: fixture.awayTeam,
+          league: fixture.league,
+          kickoff_time: fixture.kickoffTime,
+          home_winning_percentage: fixture.homeWinningPercentage,
+          away_winning_percentage: fixture.awayWinningPercentage,
+          selected_team: fixture.selectedTeam,
+          winning_percentage: fixture.winningPercentage,
+          created_at: new Date().toISOString()
+        }))
+
+        const { error: insertError } = await supabase
+          .from('statarea_picks')
+          .insert(picksToInsert)
+
+        if (insertError) throw insertError
+
+        console.log(`Saved ${scrapingResult.fixtures.length} picks to database`)
+      } catch (dbError) {
+        console.error("Database save error:", dbError)
+        // Continue even if database save fails
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully scraped and saved ${scrapingResult.fixtures.length} fixtures`,
+      timestamp: new Date().toISOString(),
+      stats: scrapingResult.stats
+    })
 
   } catch (error) {
-    console.error("Error in manual refresh:", error)
+    console.error("Error in scraping trigger:", error)
     return NextResponse.json({
       success: false,
-      error: "Failed to refresh picks",
+      error: "Failed to scrape Statarea",
       details: error instanceof Error ? error.message : "Unknown error"
     }, { status: 500 })
   }

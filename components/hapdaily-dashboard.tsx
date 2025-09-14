@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CalendarDays, TrendingUp, Target, Clock, RefreshCw, Trophy, Users, BarChart3 } from "lucide-react"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
+import { Loader2, RefreshCw, TrendingUp, Target, Calendar } from "lucide-react"
 
 interface Pick {
   id: string
@@ -14,473 +14,297 @@ interface Pick {
   awayTeam: string
   league: string
   kickoffTime: string
-  homeProbability: number
-  awayProbability: number
-  predictedOutcome: 'HOME' | 'AWAY'
-  winProbability: number
-  homeOdds: number
-  awayOdds: number
-  drawOdds: number
-  standingsGap: number
-  homeForm: string
-  awayForm: string
-  confidence: "High" | "Very High" | "Extreme"
+  homeWinningPercentage: number
+  awayWinningPercentage: number
+  selectedTeam: 'HOME' | 'AWAY'
+  winningPercentage: number
 }
 
-interface Fixture {
-  id: string
-  homeTeam: string
-  awayTeam: string
-  league: string
-  kickoffTime: string
-  status: string
-  hasOdds: boolean
-  homeProbability?: number
+interface DashboardData {
+  success: boolean
+  picks: Pick[]
+  stats: {
+    totalPicks: number
+    totalFixtures: number
+    qualifyingFixtures: number
+    averageWinningPercentage: number
+  }
+  lastUpdated: string
+  message?: string
 }
 
 export function HapDailyDashboard() {
-  const [picks, setPicks] = useState<Pick[]>([])
-  const [fixtures, setFixtures] = useState<Fixture[]>([])
+  const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [apiStatus, setApiStatus] = useState({
-    footballData: { success: false, error: null as string | null },
-    oddsApi: { success: false, error: null as string | null }
-  })
-  const [stats, setStats] = useState({
-    totalPicks: 0,
-    totalFixtures: 0,
-    qualifyingFixtures: 0,
-    averageProbability: 0
-  })
+  const [scraping, setScraping] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const fetchDashboardData = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true)
-      console.log("Fetching dashboard data...")
-
-      // Try main endpoint first
-      let response = await fetch('/api/dashboard-data')
-      let data = await response.json()
-
-      console.log("Dashboard data response:", data)
-
-      // If main endpoint fails or returns no fixtures, try raw endpoint
-      if (!data.success || (data.fixtures && data.fixtures.length === 0)) {
-        console.log("Main endpoint failed or returned no fixtures, trying raw endpoint...")
-        response = await fetch('/api/raw-fixtures')
-        data = await response.json()
-        console.log("Raw fixtures response:", data)
-      }
-
-      if (data.success) {
-        setPicks(data.picks || [])
-        setFixtures(data.fixtures || [])
-        setStats(data.stats || stats)
-        setApiStatus(data.apiStatus || apiStatus)
-        setLastUpdated(new Date(data.lastUpdated))
-        console.log("Successfully set data:", {
-          picks: data.picks?.length || 0,
-          fixtures: data.fixtures?.length || 0
-        })
-      } else {
-        console.error('Failed to fetch dashboard data:', data.error)
-        setPicks([])
-        setFixtures([])
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-      setPicks([])
-      setFixtures([])
+      const response = await fetch('/api/dashboard-data')
+      const result = await response.json()
+      setData(result)
+      setError(null)
+    } catch (err) {
+      setError('Failed to fetch dashboard data')
+      console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
+  const handleScrape = async () => {
+    try {
+      setScraping(true)
+      setError(null)
+      const response = await fetch('/api/picks', { method: 'POST' })
+      const result = await response.json()
 
-  const refreshData = async () => {
-    await fetchDashboardData()
-  }
-
-  const getConfidenceColor = (confidence: string) => {
-    switch (confidence) {
-      case "Extreme":
-        return "bg-green-500 hover:bg-green-600"
-      case "Very High":
-        return "bg-blue-500 hover:bg-blue-600"
-      case "High":
-        return "bg-orange-500 hover:bg-orange-600"
-      default:
-        return "bg-gray-500 hover:bg-gray-600"
+      if (result.success) {
+        // Refresh data after scraping
+        await fetchData()
+      } else {
+        setError(result.error || 'Scraping failed')
+      }
+    } catch (err) {
+      setError('Failed to scrape data')
+      console.error(err)
+    } finally {
+      setScraping(false)
     }
   }
 
-  const formatTime = (timeString: string) => {
-    return new Date(timeString).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-  }
+  useEffect(() => {
+    fetchData()
+  }, [])
 
-  const formatForm = (form: string) => {
-    return form.split("").map((result, index) => (
-      <span
-        key={index}
-        className={`inline-block w-4 h-4 rounded-full text-xs font-bold text-white text-center leading-4 mr-1 ${
-          result === "W" ? "bg-green-500" : result === "D" ? "bg-yellow-500" : "bg-red-500"
-        }`}
-      >
-        {result}
-      </span>
-    ))
-  }
+  const chartData = data?.picks.map(pick => ({
+    match: `${pick.homeTeam} vs ${pick.awayTeam}`,
+    percentage: pick.winningPercentage,
+    league: pick.league
+  })) || []
+
+  const pieData = data?.picks.reduce((acc, pick) => {
+    const existing = acc.find(item => item.name === pick.selectedTeam)
+    if (existing) {
+      existing.value += 1
+    } else {
+      acc.push({ name: pick.selectedTeam, value: 1 })
+    }
+    return acc
+  }, [] as { name: string; value: number }[]) || []
+
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042']
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      {/* Header */}
-      <header className="bg-white dark:bg-slate-900 shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-lg">
-                <Trophy className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">HapDaily</h1>
-                <p className="text-sm text-slate-600 dark:text-slate-400">AI-Powered Soccer Predictions</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {lastUpdated && (
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  Updated {lastUpdated.toLocaleTimeString()}
-                </div>
-              )}
-              <Button onClick={refreshData} disabled={loading} size="sm" className="flex items-center gap-2">
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">HapDaily Sports Dashboard</h1>
+            <p className="text-gray-600 mt-1">AI-powered football predictions from Statarea</p>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              onClick={fetchData}
+              disabled={loading}
+              variant="outline"
+              size="sm"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Refresh
+            </Button>
+            <Button
+              onClick={handleScrape}
+              disabled={scraping}
+              size="sm"
+            >
+              {scraping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Target className="w-4 h-4" />}
+              Scrape Statarea
+            </Button>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded-lg">
-                  <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Today's Picks</p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.totalPicks}</p>
-                </div>
-              </div>
+        {/* Error Message */}
+        {error && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="pt-6">
+              <p className="text-red-700">{error}</p>
             </CardContent>
           </Card>
+        )}
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-green-100 dark:bg-green-900 p-2 rounded-lg">
-                  <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Avg Probability</p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {Math.round(stats.averageProbability * 100)}%
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-purple-100 dark:bg-purple-900 p-2 rounded-lg">
-                  <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total Fixtures</p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {stats.totalFixtures}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-orange-100 dark:bg-orange-900 p-2 rounded-lg">
-                  <BarChart3 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Qualifying</p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {stats.qualifyingFixtures}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* API Status */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <Card className={`border-l-4 ${apiStatus.footballData.success ? 'border-l-green-500' : 'border-l-red-500'}`}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Football Data API</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {apiStatus.footballData.success ? `${apiStatus.footballData.count} fixtures` : 'Failed'}
-                  </p>
-                </div>
-                <div className={`w-3 h-3 rounded-full ${apiStatus.footballData.success ? 'bg-green-500' : 'bg-red-500'}`} />
-              </div>
-              {apiStatus.footballData.error && (
-                <p className="text-xs text-red-600 mt-1">{apiStatus.footballData.error}</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className={`border-l-4 ${apiStatus.oddsApi.success ? 'border-l-green-500' : 'border-l-red-500'}`}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Odds API</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {apiStatus.oddsApi.success ? `${apiStatus.oddsApi.count} events` : 'Failed'}
-                  </p>
-                </div>
-                <div className={`w-3 h-3 rounded-full ${apiStatus.oddsApi.success ? 'bg-green-500' : 'bg-red-500'}`} />
-              </div>
-              {apiStatus.oddsApi.error && (
-                <p className="text-xs text-red-600 mt-1">{apiStatus.oddsApi.error}</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Content - Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Fixtures Table */}
-          <div className="lg:col-span-2">
+        {/* Stats Cards */}
+        {data?.stats && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5" />
-                  Today's Fixtures ({fixtures.length})
-                </CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Picks</CardTitle>
+                <Target className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="max-h-96 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Match</TableHead>
-                        <TableHead>League</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Odds</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {fixtures.map((fixture) => (
-                        <TableRow key={fixture.id}>
-                          <TableCell className="text-xs">
-                            {new Date(fixture.kickoffTime).toLocaleTimeString("en-US", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: false,
-                            })}
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <div className="font-medium">{fixture.homeTeam}</div>
-                              <div className="text-slate-600 dark:text-slate-400">vs {fixture.awayTeam}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs">{fixture.league}</TableCell>
-                          <TableCell>
-                            <Badge variant={fixture.status === 'TIMED' ? 'default' : 'secondary'} className="text-xs">
-                              {fixture.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className={`w-2 h-2 rounded-full ${fixture.hasOdds ? 'bg-green-500' : 'bg-gray-300'}`} />
-                          </TableCell>
-                        </TableRow>
+                <div className="text-2xl font-bold">{data.stats.totalPicks}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Avg Win %</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{data.stats.averageWinningPercentage.toFixed(1)}%</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Qualifying</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{data.stats.qualifyingFixtures}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Last Updated</CardTitle>
+                <RefreshCw className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground">
+                  {new Date(data.lastUpdated).toLocaleTimeString()}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Charts */}
+        {data?.picks && data.picks.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bar Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Winning Percentages</CardTitle>
+                <CardDescription>Predicted win percentages for today's matches</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="match"
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                      fontSize={12}
+                    />
+                    <YAxis />
+                    <Tooltip
+                      formatter={(value) => [`${value}%`, 'Win %']}
+                      labelFormatter={(label) => `Match: ${label}`}
+                    />
+                    <Bar dataKey="percentage" fill="#3b82f6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Pie Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Team Selection Distribution</CardTitle>
+                <CardDescription>Home vs Away team selections</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
           </div>
+        )}
 
-          {/* Right Column - Selected Picks */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5" />
-                  Selected Picks ({picks.length})
-                </CardTitle>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  High-probability home or away wins (≥50% confidence)
-                </p>
-              </CardHeader>
-              <CardContent>
-
-                {loading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="animate-pulse">
-                        <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
-                        <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-2"></div>
-                        <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-2/3"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : picks.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="bg-slate-100 dark:bg-slate-800 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4">
-                      <Target className="h-6 w-6 text-slate-400" />
-                    </div>
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">No Confident Picks</h3>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">
-                      No matches meet our ≥50% confidence threshold today.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {picks.map((pick, index) => (
-                      <Card key={pick.id} className="hover:shadow-md transition-shadow duration-200">
-                        <CardContent className="p-4">
-                          <div className="space-y-3">
-                            {/* Header */}
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <Badge className={getConfidenceColor(pick.confidence)} size="sm">
-                                  {pick.confidence}
-                                </Badge>
-                                <h4 className="font-semibold text-sm text-slate-900 dark:text-white mt-1 leading-tight">
-                                  <span className={pick.predictedOutcome === 'HOME' ? 'text-green-600 dark:text-green-400' : ''}>
-                                    {pick.homeTeam}
-                                  </span>
-                                  <span className="text-slate-600 dark:text-slate-400 font-normal"> vs </span>
-                                  <span className={pick.predictedOutcome === 'AWAY' ? 'text-green-600 dark:text-green-400' : ''}>
-                                    {pick.awayTeam}
-                                  </span>
-                                </h4>
-                                <p className="text-xs text-slate-600 dark:text-slate-400">
-                                  {formatTime(pick.kickoffTime)} • {pick.league}
-                                </p>
-                                <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                                  Predicted: {pick.predictedOutcome === 'HOME' ? pick.homeTeam : pick.awayTeam} Win
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                                  {Math.round(pick.winProbability * 100)}%
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Probabilities */}
-                            <div className="grid grid-cols-2 gap-3 text-xs">
-                              <div>
-                                <div className="text-slate-600 dark:text-slate-400 mb-1">Win Probabilities</div>
-                                <div className="space-y-1">
-                                  <div className="flex justify-between">
-                                    <span>Home:</span>
-                                    <span className={`font-semibold ${pick.predictedOutcome === 'HOME' ? 'text-green-600 dark:text-green-400' : ''}`}>
-                                      {Math.round(pick.homeProbability * 100)}%
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span>Away:</span>
-                                    <span className={`font-semibold ${pick.predictedOutcome === 'AWAY' ? 'text-green-600 dark:text-green-400' : ''}`}>
-                                      {Math.round(pick.awayProbability * 100)}%
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-slate-600 dark:text-slate-400 mb-1">Odds</div>
-                                <div className="grid grid-cols-3 gap-1 text-center">
-                                  <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
-                                    <div className="text-slate-500 text-xs">H</div>
-                                    <div className="font-semibold text-xs">{pick.homeOdds}</div>
-                                  </div>
-                                  <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
-                                    <div className="text-slate-500 text-xs">D</div>
-                                    <div className="font-semibold text-xs">{pick.drawOdds}</div>
-                                  </div>
-                                  <div className="bg-slate-50 dark:bg-slate-800 rounded p-1">
-                                    <div className="text-slate-500 text-xs">A</div>
-                                    <div className="font-semibold text-xs">{pick.awayOdds}</div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Form */}
-                            <div className="text-xs">
-                              <div className="flex justify-between items-center">
-                                <span className="text-slate-600 dark:text-slate-400">Form:</span>
-                                <div className="flex gap-1">
-                                  {formatForm(pick.homeForm)}
-                                </div>
-                              </div>
-                              <div className="flex justify-between items-center mt-1">
-                                <span className="text-slate-600 dark:text-slate-400">Gap:</span>
-                                <span>+{pick.standingsGap}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Footer Info */}
-        <div className="mt-12 text-center">
-          <Card className="bg-slate-50 dark:bg-slate-800/50">
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-slate-900 dark:text-white mb-2">How It Works</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-                Our AI analyzes live odds from multiple bookmakers, team standings, recent form, and statistical models
-                to identify the most confident win predictions. Only matches with ≥50% home or away win probability are selected.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4 mt-4 text-xs text-slate-500 dark:text-slate-400">
-                <span>• Data from Football-Data.org</span>
-                <span>• Odds from The Odds API</span>
-                <span>• Updated twice daily</span>
-                <span>• AI-powered analysis</span>
+        {/* Picks Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Today's Picks</CardTitle>
+            <CardDescription>
+              {data?.message || "AI-selected matches with ≥70% winning percentage"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {data?.picks && data.picks.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Match</TableHead>
+                    <TableHead>League</TableHead>
+                    <TableHead>Kickoff</TableHead>
+                    <TableHead>Home %</TableHead>
+                    <TableHead>Away %</TableHead>
+                    <TableHead>Selected</TableHead>
+                    <TableHead>Win %</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.picks.map((pick) => (
+                    <TableRow key={pick.id}>
+                      <TableCell className="font-medium">
+                        {pick.homeTeam} vs {pick.awayTeam}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{pick.league}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(pick.kickoffTime).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </TableCell>
+                      <TableCell>{pick.homeWinningPercentage.toFixed(1)}%</TableCell>
+                      <TableCell>{pick.awayWinningPercentage.toFixed(1)}%</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={pick.selectedTeam === 'HOME' ? 'default' : 'outline'}
+                        >
+                          {pick.selectedTeam}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-semibold text-green-600">
+                        {pick.winningPercentage.toFixed(1)}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg">No picks available</p>
+                <p className="text-sm">Click "Scrape Statarea" to get today's fixtures</p>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

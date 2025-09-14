@@ -2,120 +2,84 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    console.log("=== DEBUGGING FIXTURES API ===")
-    
-    const API_TOKEN = process.env.FOOTBALL_DATA_TOKEN
-    console.log("API Token:", API_TOKEN ? API_TOKEN.substring(0, 8) + '...' : 'NOT SET')
-    
-    if (!API_TOKEN) {
-      return NextResponse.json({
-        success: false,
-        error: "FOOTBALL_DATA_TOKEN not set",
-        step: "environment_check"
-      })
+    console.log("=== DEBUGGING STAT_AREA SCRAPING SYSTEM ===")
+
+    // Check database connection
+    const supabaseUrl = process.env.SUPABASE_URL
+    console.log("Supabase URL:", supabaseUrl ? "SET" : "NOT SET")
+
+    // Test Statarea scraper import
+    let scraperAvailable = false
+    try {
+      await import("@/lib/statarea-scraper")
+      scraperAvailable = true
+      console.log("Statarea scraper: AVAILABLE")
+    } catch (error) {
+      console.log("Statarea scraper: NOT AVAILABLE", error)
     }
-    
-    // Step 1: Test direct API call with date debugging
+
+    // Check current date/time
     const now = new Date()
     const today = now.toISOString().split('T')[0]
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
     console.log("Date debugging:", {
       now: now.toISOString(),
       today: today,
-      tomorrow: tomorrow,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     })
 
-    // Try a wider date range to see what's available
-    const url = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${tomorrow}`
-    
-    console.log("Making direct API call to:", url)
-    
-    const headers = {
-      'X-Auth-Token': API_TOKEN,
-      'Content-Type': 'application/json'
-    }
-    
-    const response = await fetch(url, { headers })
-    console.log("Response status:", response.status)
-    console.log("Response headers:", Object.fromEntries(response.headers.entries()))
-    
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("API Error Response:", errorText)
-      return NextResponse.json({
-        success: false,
-        error: `API returned ${response.status}: ${response.statusText}`,
-        details: errorText,
-        step: "api_call"
-      })
-    }
-    
-    const data = await response.json()
-    console.log("Raw API response structure:", {
-      hasMatches: !!data.matches,
-      matchCount: data.matches?.length || 0,
-      hasFilters: !!data.filters,
-      hasResultSet: !!data.resultSet
-    })
-    
-    // Step 2: Test our filtering function
-    let filteredFixtures = []
-    try {
-      const { getTodaysFixtures } = await import("@/lib/football-data")
-      filteredFixtures = await getTodaysFixtures()
-      console.log("Filtered fixtures count:", filteredFixtures.length)
-    } catch (filterError) {
-      console.error("Filter function error:", filterError)
-      return NextResponse.json({
-        success: false,
-        error: "Filter function failed",
-        details: filterError instanceof Error ? filterError.message : "Unknown error",
-        step: "filtering",
-        rawData: {
-          matchCount: data.matches?.length || 0,
-          sampleMatch: data.matches?.[0] || null
+    // Test database query if available
+    let dbTestResult = null
+    if (supabaseUrl) {
+      try {
+        const { supabase } = await import("@/lib/db")
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const { count, error } = await supabase
+          .from('statarea_picks')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', today)
+          .lt('created_at', tomorrow)
+        if (error) throw error
+        dbTestResult = {
+          success: true,
+          todaysPicksCount: count || 0
         }
-      })
+        console.log("Database test: SUCCESS")
+      } catch (dbError) {
+        console.log("Database test: FAILED", dbError)
+        dbTestResult = {
+          success: false,
+          error: dbError instanceof Error ? dbError.message : "Unknown error"
+        }
+      }
     }
-    
-    // Step 3: Return comprehensive debug info
+
+    // Return comprehensive debug info for new system
     return NextResponse.json({
       success: true,
+      system: "Statarea Web Scraping System",
       debug_info: {
-        api_token_set: !!API_TOKEN,
+        database_url_set: !!supabaseUrl,
+        scraper_available: scraperAvailable,
         today_date: today,
-        api_url: url,
-        response_status: response.status
+        system_status: "Active"
       },
-      raw_api_data: {
-        total_matches: data.matches?.length || 0,
-        competitions_found: [...new Set(data.matches?.map((m: any) => m.competition.code) || [])],
-        statuses_found: [...new Set(data.matches?.map((m: any) => m.status) || [])],
-        sample_matches: data.matches?.slice(0, 3).map((match: any) => ({
-          id: match.id,
-          home_team: match.homeTeam.name,
-          away_team: match.awayTeam.name,
-          competition_code: match.competition.code,
-          competition_name: match.competition.name,
-          status: match.status,
-          utc_date: match.utcDate
-        })) || []
+      database_test: dbTestResult,
+      scraping_info: {
+        target_url: "https://old.statarea.com/",
+        filter_criteria: "≥70% winning percentage",
+        max_fixtures: 8,
+        min_fixtures: 3
       },
-      filtered_data: {
-        filtered_count: filteredFixtures.length,
-        sample_filtered: filteredFixtures.slice(0, 3).map((fixture: any) => ({
-          id: fixture.id,
-          home_team: fixture.homeTeam.name,
-          away_team: fixture.awayTeam.name,
-          competition_code: fixture.competition.code,
-          status: fixture.status
-        }))
-      },
+      features: [
+        "Daily web scraping from Statarea",
+        "Winning percentage filtering",
+        "Automatic fixture selection",
+        "Database storage and retrieval"
+      ],
       timestamp: new Date().toISOString()
     })
-    
+
   } catch (error) {
     console.error("Debug endpoint error:", error)
     return NextResponse.json({

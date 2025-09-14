@@ -56,3 +56,22 @@ CREATE INDEX IF NOT EXISTS idx_fixtures_teams ON fixtures(home_team, away_team);
 
 -- Create a unique constraint for daily picks to prevent duplicates
 CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_picks_unique ON daily_picks(fixture_id, pick_date);
+
+-- Statarea picks table for scraped data
+CREATE TABLE IF NOT EXISTS statarea_picks (
+  id VARCHAR(255) PRIMARY KEY,
+  home_team VARCHAR(255) NOT NULL,
+  away_team VARCHAR(255) NOT NULL,
+  league VARCHAR(255) NOT NULL,
+  kickoff_time TIMESTAMP WITH TIME ZONE NOT NULL,
+  home_winning_percentage DECIMAL(5,2) NOT NULL,
+  away_winning_percentage DECIMAL(5,2) NOT NULL,
+  selected_team VARCHAR(10) NOT NULL CHECK (selected_team IN ('HOME', 'AWAY')),
+  winning_percentage DECIMAL(5,2) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for Statarea picks
+CREATE INDEX IF NOT EXISTS idx_statarea_picks_created_at ON statarea_picks(created_at);
+CREATE INDEX IF NOT EXISTS idx_statarea_picks_winning_percentage ON statarea_picks(winning_percentage DESC);
+CREATE INDEX IF NOT EXISTS idx_statarea_picks_teams ON statarea_picks(home_team, away_team);
