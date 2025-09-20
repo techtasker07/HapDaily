@@ -1,5 +1,6 @@
 import axios from 'axios'
 import * as cheerio from 'cheerio'
+import https from 'https'
 
 export interface StatareaFixture {
   id: string
@@ -22,7 +23,7 @@ export interface ScrapingResult {
   }
 }
 
-const STAT_AREA_BASE_URL = 'https://old.statarea.com'
+const STAT_AREA_BASE_URL = 'https://old.statarea.com/predictions/' + new Date().toISOString().split('T')[0]
 
 /**
  * Scrape fixtures from Statarea and filter by winning percentage
@@ -35,7 +36,10 @@ export async function scrapeStatareaFixtures(): Promise<ScrapingResult> {
     const response = await axios.get(STAT_AREA_BASE_URL, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+      },
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false
+      })
     })
 
     const $ = cheerio.load(response.data)
@@ -81,12 +85,13 @@ export async function scrapeStatareaFixtures(): Promise<ScrapingResult> {
 
         const kickoffTime = parseTime(timeText)
 
-        // Only include if at least one team has >=70% winning percentage
-        if (homeWinningPercentage < 70 && awayWinningPercentage < 70) return
+        // Only include if at least one team has >=60% winning percentage
+        if (homeWinningPercentage < 60 && awayWinningPercentage < 60) return
 
-        // Create fixture object
+        // Create fixture object with unique ID using timestamp to avoid duplicates
+        const uniqueId = `${homeTeam.replace(/\s+/g, '-')}-${awayTeam.replace(/\s+/g, '-')}-${timeText.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
         const fixture: StatareaFixture = {
-          id: `${homeTeam.replace(/\s+/g, '-')}-${awayTeam.replace(/\s+/g, '-')}-${timeText.replace(/[^a-zA-Z0-9]/g, '')}`,
+          id: uniqueId,
           homeTeam,
           awayTeam,
           league,
@@ -105,7 +110,7 @@ export async function scrapeStatareaFixtures(): Promise<ScrapingResult> {
       }
     })
 
-    console.log(`Found ${fixtures.length} qualifying fixtures from Statarea (already filtered ≥70%)`)
+    console.log(`Found ${fixtures.length} qualifying fixtures from Statarea (already filtered ≥60%)`)
 
     // Sort by winning percentage (descending)
     const sortedFixtures = fixtures.sort((a, b) =>
@@ -135,7 +140,7 @@ export async function scrapeStatareaFixtures(): Promise<ScrapingResult> {
 
     console.log('=== STAT_AREA SCRAPING SUMMARY ===')
     console.log(`📊 Total fixtures scraped: ${result.stats.totalFixtures}`)
-    console.log(`✅ Qualifying fixtures (≥70% win rate): ${result.stats.qualifyingFixtures}`)
+    console.log(`✅ Qualifying fixtures (≥60% win rate): ${result.stats.qualifyingFixtures}`)
     console.log(`🏆 Selected fixtures: ${result.stats.selectedFixtures}`)
     console.log('==================================')
 
@@ -199,7 +204,7 @@ export function validateScrapingResult(result: ScrapingResult): boolean {
   // Check if all selected fixtures have required fields
   for (const fixture of result.fixtures) {
     if (!fixture.homeTeam || !fixture.awayTeam || !fixture.league) return false
-    if (fixture.winningPercentage < 70) return false
+    if (fixture.winningPercentage < 60) return false
   }
 
   return true

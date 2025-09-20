@@ -127,9 +127,12 @@ export async function POST() {
           .gte('created_at', today)
           .lt('created_at', tomorrow)
 
-        if (deleteError) throw deleteError
+        if (deleteError) {
+          console.log("Warning: Could not clear existing picks:", deleteError)
+          // Don't throw error, continue with upsert approach
+        }
 
-        // Insert new picks
+        // Insert new picks with upsert (on conflict update)
         const picksToInsert = scrapingResult.fixtures.map(fixture => ({
           id: fixture.id,
           home_team: fixture.homeTeam,
@@ -145,7 +148,10 @@ export async function POST() {
 
         const { error: insertError } = await supabase
           .from('statarea_picks')
-          .insert(picksToInsert)
+          .upsert(picksToInsert, {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
 
         if (insertError) throw insertError
 
